@@ -8,21 +8,21 @@ Coding agents now write much of the world's new code, yet they still ship it thr
 
 ## Two-minute pitch
 
-**The problem.** Anthropic's merged code changes went from about 2,500 a day to over 30,000 in four months. Its verdict: the bottleneck is now "all of the developer infrastructure built for human scale." GitHub is that infrastructure. It was built for a person who opens a pull request and waits for a colleague, and it is one-size-fits-all.
+**The problem.** Anthropic's merged code changes went from about 2,500 a day to over 30,000 in four months. Its verdict: the bottleneck is now "all of the developer infrastructure built for human scale." GitHub is that infrastructure. It was built for a person who opens a pull request and waits for a colleague, and it is one-size-fits-all. GitHub itself now plans for "30X today's scale".
 
-Agents break that model in two ways. First, they start blind. None of them can see what the others are trying or what already failed, so they repeat each other's work. Second, they grade their own work. In most enterprise workflows the only real check is still a human reading every line or an LLM-generated review, which is impossible with twenty agents shipping 20 PRs a day.
+Agents break that model in two ways. First, they start blind. None of them can see what the others are trying or what already failed, so they repeat each other's work. In one Anthropic experiment, 18 of 30 agents created a git branch with the exact same name. Second, they grade their own work. In most enterprise workflows the only real check is still a human reading every line or an LLM-generated review, which is impossible with twenty agents shipping 20 PRs a day.
 
 **The solution.** Fervo CLI and SDK provides the building blocks to make your repo-management workflow agent native. Your repos stay on a server you run, and every team assembles its own platform from the same core blocks:
 
-- **A shared frontier.** One map of every direction tried, how it scored and what is still open.
+- **A shared frontier.** One map of every direction tried, how it scored and what is still open. A change moves the frontier only when its gain beats measurement noise.
 - **Declarations.** Each agent states what it will do before it starts, so others steer around it.
-- **Independent judgment.** No agent scores its own work: your tests, a judge prompt and agents from other providers do.
+- **Independent judgment.** No agent scores its own work. Your tests, a judge from a different provider and agents from other providers do.
 - **A human override.** An admin can merge, veto or revert anything.
 
-**The philosophy.** Fervo is a minimal harness for repo management: it takes that same philosopy of pi, the coding agent that ships with four tools and a short prompt and leaves the rest to extensions. Fervo does the same for repo management. Want every contributing agent to sign off before a change lands? Add that rule. Only want a human on security code? Write it down. Want a different interface, or none? Swap it. Fervo also has no intelligence of its own. You bring your model keys and define "better"; we make measuring it cheap and trustworthy. Leaving GitHub takes one command, `fervo import`, which brings your history, pull requests, reviews and issues to your own remote.
+**The philosophy.** Fervo is a minimal harness for repo management: it takes the same philosophy as pi, the coding agent that ships with four tools and a short prompt and leaves the rest to extensions. Fervo does the same for repo management. Want every contributing agent to sign off before a change lands? Add that rule. Only want a human on security code? Write it down. Want a different interface, or none? Swap it. Fervo also has no intelligence of its own. You bring your model keys and define "better"; we make measuring it cheap and trustworthy. Leaving GitHub takes one command, `fervo import`, which brings your history, pull requests, reviews and issues to your own remote.
 
 ## About the name
 
-*Fervo* (Latin, an old form of *ferveo*) means "I seethe, I glow, I am busy." Virgil used *fervet opus*, "the work seethes," for bees at work in a hive (*Georgics* 4.169, *Aeneid* 1.436). That is the repo we want: many hands at once, all moving in the same direction.
+*Fervo* (Latin, an old form of *ferveo*) means "I boil, I glow", and figuratively "I swarm". Virgil used *fervet opus*, "the work seethes," for bees at work in a hive (*Georgics* 4.169, *Aeneid* 1.436). That is the repo we want: many hands at once, all moving in the same direction.
 
-*Source:* [Redesigning source control at Anthropic](https://www.anthropic.com/research/redesigning-source-control) (2026-10-13).
+*Sources:* [Redesigning source control at Anthropic](https://www.anthropic.com/research/redesigning-source-control) (2026-10-13); [Patterns and problems in emerging multiagent systems](https://www.anthropic.com/research/multiagent-systems) (Anthropic Frontier Red Team, 2026-08-13); [An update on GitHub availability](https://github.blog/news-insights/company-news/an-update-on-github-availability/) (2026-04-28).
