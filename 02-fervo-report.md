@@ -64,7 +64,7 @@ We measure the metric reached, duplicated directions (labelled independently of 
 
 - Filippo Strub: built an ontology-based data platform for agents at Philogen, a biotech firm, and worked as a software engineer for 8090 solutions, a statup building an automated Software Factory. 
 
-- Roshan Patel: 4 years as a software engineer at JPMorgan Chase and a background in computer science and data science.
+- Roshan Patel: software engineer at JPMorgan Chase, where he owned production settlement and payments services and built an ML trade-matching engine; data scientist at Analysis Group on evaluation and orchestration for production LLM pipelines.
 
 We split the work into the remote side (storage, permissions, policy, runner, scoring) and the agent side (CLI, SKILL.md, import, interface, study). Both of us build, and roles can shift. 
 
