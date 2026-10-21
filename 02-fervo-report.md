@@ -2,7 +2,7 @@
 
 ## Problem and vision
 
-Coding agents now write much of the world's new code, yet they still ship it through GitHub, a platform built for humans that i) have all the necessary context to prioritize pull requests and know who own what and ii) review one pull request at a time. For modern multi-agent coding workflows, these two points are major bottlenecks for the following reasons:
+Coding agents now write much of the world's new code, yet they still ship it through GitHub, a platform built for humans that i) have all the necessary context to prioritize pull requests and know who owns what and ii) review one pull request at a time. For modern multi-agent coding workflows, these two points are major bottlenecks for the following reasons:
 
 1. The agents are blind until a feature is committed to the repo: none of them sees what the others are trying or what already failed, so they repeat directions and drift apart. Moreover, the same context needs to be rediscovered over and over wasting tokens. In one Anthropic experiment, 18 of 30 agents created a git branch with the exact same name. 
 
@@ -29,7 +29,7 @@ Then every team assembles its own platform from the same core blocks:
 
 These primitives are handled by this provided machine: it computes context, records declarations, keeps a scored frontier of work in progress, evaluates every change independently, and merges by policy. Everything else, from continuous integration to review rules and the interface, is an optional extension left to the developers to decide. 
 
-Any agent that works on the repo (ClaudeCode, pi, OpenClaw, Codex, Hermes) calls the CLI, which returns JSON, and learn it from a SKILL.md file that their harness loads. Every LLM call runs in `fervo runner`, a process the operator runs with their own API keys.
+Any agent that works on the repo (Claude Code, pi, OpenClaw, Codex, Hermes) calls the CLI, which returns JSON, and learns it from a SKILL.md file that their harness loads. Every LLM call runs in `fervo runner`, a process the operator runs with their own API keys.
 
 To ensure backward compatibility, `fervo import` moves a GitHub repository, with its history and open pull requests, onto the team's remote. We reuse git, the harnesses and the operator's model providers. 
 
@@ -62,13 +62,13 @@ We measure the metric reached, duplicated directions (labelled independently of 
 
 ## Team members and feasibility
 
-- Filippo Strub: built an ontology-based data platform for agents at Philogen, a biotech firm, and worked as a software engineer for 8090 solutions, a statup building an automated Software Factory. 
+- Filippo Strub: built an ontology-based data platform for agents at Philogen, a biotech firm, and worked as a software engineer for 8090 solutions, a startup building an automated Software Factory. 
 
-- Roshan Patel: 4 years as a software engineer at JPMorgan Chase and a background in computer science and data science.
+- Roshan Patel: software engineer at JPMorgan Chase, where he owned production settlement and payments services and built an ML trade-matching engine; data scientist at Analysis Group on evaluation and orchestration for production LLM pipelines.
 
 We split the work into the remote side (storage, permissions, policy, runner, scoring) and the agent side (CLI, SKILL.md, import, interface, study). Both of us build, and roles can shift. 
 
-We scope the project to be an MVP, with minimal features to be actually useful. We believe that with our prior coding and backend developement experience the project is feasible in 4 weeks.
+We scope the project to be an MVP, with minimal features to be actually useful. We believe that with our prior coding and backend development experience the project is feasible in 4 weeks.
 
 ## Feedback
 
@@ -76,7 +76,7 @@ Six AI reviewers covered the first iteration of the plan: an adoption skeptic, a
 
 Prior art narrowed our claim to the scored frontier, strict independence and evaluation on the operator's keys. Other main changes were: Github compatibility command, independent judge design, idempotency key for writes, scoping the smallest demo to fit in 4 weeks.
 
-This second iteration was passed trough a literature and landscape reviewe (about 40 papers, 35 products, 39 open-source repos), that led to these changes:
+This second iteration was passed through a literature and landscape review (about 40 papers, 35 products, 39 open-source repos), that led to these changes:
 
 - judge from a provider other than the author's, comparing pairwise
 - paired-difference promotion
