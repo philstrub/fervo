@@ -38,11 +38,13 @@ from typing import Annotated
 
 import typer
 
-from fervo.cli.remote import Remote, emit, get, load_remote
+from fervo.cli.remote import Remote, emit, get, load_remote, post
 from fervo.git import git
-from fervo.models import Context, Whoami
+from fervo.models import ClaimIn, ClaimOut, Context, Whoami
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+
+Key = Annotated[str, typer.Option(help="Idempotency key. Replaying a command with the same key returns the first answer.")]
 
 
 @app.callback()
@@ -81,3 +83,20 @@ def context(
     """Goal, frontier, open claims, tried directions, rules and your updates."""
     remote = load_remote(Path.cwd())
     emit(Context.model_validate(get(remote, "/context", {"scope": scope, "summary": summary})))
+
+
+@app.command()
+def claim(
+    parent: Annotated[str, typer.Option(help="The node to build on, e.g. n_42.")],
+    scope: Annotated[list[str], typer.Option(help="A path or glob you will change. Repeatable.")],
+    intent: Annotated[str, typer.Option(help="What you will do and why, in a sentence.")],
+    key: Key,
+    checkout: Annotated[bool, typer.Option(help="Fetch the parent and switch to a new branch <prefix>/<lease> at it.")] = False,
+) -> None:
+    """Declare what you will do before you start. Returns the lease, blocked paths and overlaps."""
+    cwd = Path.cwd()
+    out = ClaimOut.model_validate(post(load_remote(cwd), "/claims", key, ClaimIn(parent=parent, scope=scope, intent=intent)))
+    if checkout:
+        git(cwd, "fetch", "--quiet", "origin", out.parent_ref)
+        git(cwd, "checkout", "--quiet", "-b", f"{git(cwd, 'config', '--get', 'fervo.prefix')}/{out.lease}", "FETCH_HEAD")
+    emit(out)
