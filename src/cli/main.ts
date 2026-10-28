@@ -15,14 +15,66 @@ Claims precede work; a moved target requires a new claim with supersedes; writes
 */
 import { Command, Option } from 'commander';
 import { resolve } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { randomBytes, createHash } from 'node:crypto';
 import { z } from 'zod';
 import { git } from '../git.js';
 import { emit, loadRemote, request } from '../remote.js';
 import { Actor, ActorCreated, ActorIn, Claim, ClaimIn, ClaimOut, Context, Job, NodeStatus, ReasonIn, ReviewIn, Status, SubmitIn, SubmitOut, Verdict, Whoami } from '../models.js';
+import { mainConfig } from '../config.js';
+import { openDb } from '../store/db.js';
+import { createFervoServer } from '../server/http.js';
+import { installHook, checkPush } from '../server/git.js';
+import { runRunner, readSettings } from '../runner/run.js';
 
 const cli = new Command().name('fervo').description('JSON repo management for agent contributors');
 const cwd = () => process.cwd();
 const collect = (value: string, previous: string[]) => [...previous, value];
+
+cli.command('init').description('Initialize a managed bare repository and first human actor')
+  .requiredOption('--source <repo>').requiredOption('--root <directory>').requiredOption('--actor <id>')
+  .action((options: { source: string; root: string; actor: string }) => {
+    const root=resolve(options.root);
+    mkdirSync(root);
+    git(cwd(),'clone','--bare','--quiet',resolve(options.source),resolve(root,'repo.git'));
+    mainConfig(resolve(root,'repo.git'));
+    mkdirSync(resolve(root,'.fervo'));
+    const db=openDb(root);
+    const token=randomBytes(32).toString('hex');
+    const at=new Date().toISOString();
+    db.prepare('INSERT INTO actors(id,kind,provider,model,harness,token_hash,created_at) VALUES(?,?,?,?,?,?,?)').run(options.actor,'human',null,null,null,createHash('sha256').update(token).digest('hex'),at);
+    const commit=git(root,'--git-dir',resolve(root,'repo.git'),'rev-parse','refs/heads/main');
+    db.prepare('INSERT INTO nodes(id,commit_sha,parent_node,claim,author,intent,scope,changed_paths,state,merged_as,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('n_0',commit,null,null,options.actor,'baseline','[]','[]','merged',commit,at);
+    db.prepare('INSERT INTO events(at,actor,type,subject,data) VALUES(?,?,?,?,?)').run(at,options.actor,'initialized','n_0','{}');
+    db.prepare('INSERT INTO jobs(id,kind,node,claim,payload,state,created_at) VALUES(?,?,?,?,?,?,?)').run(`j_${randomBytes(5).toString('hex')}`,'baseline',null,null,'{}','queued',at);
+    db.close();
+    installHook(root,resolve(process.argv[1]!));
+    emit({root,actor:options.actor,token,main:{node:'n_0',commit}});
+  });
+
+cli.command('serve').description('Serve authenticated Git and JSON API')
+  .requiredOption('--root <directory>').option('--host <host>','listen host','127.0.0.1').option('--port <port>','listen port','8765')
+  .action(async (options: {root:string;host:string;port:string}) => {
+    const server=createFervoServer(resolve(options.root));
+    await new Promise<void>(resolve=>server.listen(Number(options.port),options.host,resolve));
+    process.stderr.write(`[serve] listening on ${options.host}:${options.port}\n`);
+  });
+
+cli.command('hook').command('pre-receive').description('Validate pushed refs in a managed bare repository')
+  .action(async()=>{
+    let input='';for await(const chunk of process.stdin)input+=chunk.toString();
+    checkPush(process.env.REMOTE_USER!,process.env.FERVO_ACTOR_KIND!,input);
+  });
+
+cli.command('runner').description('Lease and evaluate jobs on the operator machine')
+  .requiredOption('--remote <url>').addOption(new Option('--token <token>').env('FERVO_TOKEN').makeOptionMandatory())
+  .requiredOption('--judge-template <file>').requiredOption('--review-template <file>')
+  .requiredOption('--anthropic-model <id>').requiredOption('--openai-model <id>')
+  .requiredOption('--review-provider <provider>').requiredOption('--review-model <id>')
+  .option('--once','process one available job and exit')
+  .action(async (options:{remote:string;token:string;judgeTemplate:string;reviewTemplate:string;anthropicModel:string;openaiModel:string;reviewProvider:string;reviewModel:string;once?:boolean})=>{
+    await runRunner(options.remote,options.token,readSettings(options),undefined,Boolean(options.once));
+  });
 
 cli.command('clone').description('Clone a Fervo repo and store this actor\'s token in Git config')
   .argument('<url>').argument('<directory>')
