@@ -1,0 +1,51 @@
+/**
+# API Contract
+
+Validated JSON exchanged by the CLI, server, and runner.
+
+## 1. What This Module Does
+Defines the requests and responses for the agent and operator commands.
+## 2. Why This Module Exists
+A shared runtime schema makes an API mismatch fail at the process boundary.
+## 3. How It Fits in the Architecture
+The CLI validates server output; future server and runner code use the same schemas.
+## 4. Key Concepts
+Claims reserve intent and scope; nodes identify submitted commits. Writes carry idempotency keys in HTTP headers.
+*/
+import { z } from 'zod';
+
+const id = z.string().min(1);
+const pathList = z.array(z.string().min(1));
+export const ActorKind = z.enum(['human', 'agent', 'runner', 'system']);
+export const Actor = z.object({ id, kind: ActorKind, provider: z.string().nullable(), model: z.string().nullable(), harness: z.string().nullable(), disabled: z.boolean() });
+export const ActorIn = Actor.pick({ id: true, kind: true, provider: true, model: true, harness: true }).extend({ id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) });
+export const ActorCreated = z.object({ actor: Actor, token: id });
+export const Whoami = z.object({ actor: Actor, git_url: z.string().min(1) });
+export const ClaimIn = z.object({ parent: id, supersedes: id.optional(), scope: pathList.min(1), intent: id });
+export const Overlap = z.object({ kind: z.enum(['claim', 'node']), id, by: id, scope: pathList, intent: id });
+export const ClaimOut = z.object({ lease: id, parent: id, parent_commit: id, parent_ref: id, expires_at: id, blocked: pathList, overlaps: z.array(Overlap), review_job: id.nullable().optional() });
+export const Claim = z.object({ lease: id, holder: id, parent: id, supersedes: id.nullable().optional(), intent: id, scope: pathList, state: z.enum(['active', 'submitted', 'expired', 'released']), expires_at: id });
+export const SubmitIn = z.object({ lease: id, commit: id });
+export const SubmitOut = z.object({ node: id, job: id });
+export const NodeState = z.enum(['submitted', 'evaluating', 'verified', 'merged', 'reverted', 'rejected', 'failed', 'abandoned']);
+export const Outcome = z.enum(['improved', 'within_noise', 'worse']);
+export const NextAction = z.enum(['wait', 'rebase', 'retry', 'stop']);
+export const NodeStatus = z.object({ node: id, state: NodeState, outcome: Outcome.nullable(), delta: z.number().nullable(), interval: z.tuple([z.number(), z.number()]).nullable(), rank: z.number().int().nullable(), reason: z.string().nullable(), job: id.nullable(), next_action: NextAction.optional() });
+export const ClaimStatus = z.object({ lease: id, state: Claim.shape.state, expires_at: id, review_job: id.nullable(), review: z.enum(['pending', 'passed', 'failed']).nullable(), reason: z.string().nullable(), next_action: NextAction });
+export const Job = z.object({ id, kind: z.enum(['claim_review', 'eval', 'review', 'summary', 'postmerge', 'baseline']), node: id.nullable(), claim: id.nullable().optional(), state: z.enum(['queued', 'running', 'done', 'failed']) });
+export const Status = z.union([NodeStatus, ClaimStatus, Job]);
+export const ReasonIn = z.object({ reason: id });
+export const ReviewIn = z.object({ passed: z.boolean(), evidence: id });
+export const Verdict = z.object({ id, node: id.nullable(), claim: id.nullable().optional(), reviewer: id, producer: id, provider: z.string().nullable(), passed: z.boolean().nullable(), evidence: z.string() });
+export const Metric = z.object({ name: id, direction: z.enum(['max', 'min']), weight: z.number() });
+export const MainHead = z.object({ commit: id, node: id, score: z.number().optional() });
+export const FrontierEntry = z.object({ node: id, rank: z.number().int().optional(), score: z.number().optional(), delta: z.number().optional(), interval: z.tuple([z.number(), z.number()]), intent: id, author: id, ref: id });
+export const ClaimEntry = z.object({ lease: id, by: id, scope: pathList, intent: id, since: id });
+export const TriedEntry = z.object({ node: id, intent: id, scope: pathList.optional(), state: NodeState.optional(), outcome: Outcome.nullable(), reason: z.string().nullable().optional(), at: id.optional() });
+export const Rules = z.object({ pinned: pathList, requirements_by_path: z.record(z.string(), pathList) });
+export const Update = z.object({ subject: id, event: id, at: id });
+export const Mine = z.object({ leases: z.array(ClaimEntry), updates: z.array(Update) });
+export const Summary = z.object({ status: z.enum(['pending', 'ready']), text: z.string().nullable(), job: id.nullable() });
+export const Context = z.object({ goal: z.string(), metrics: z.array(Metric), main: MainHead, frontier: z.array(FrontierEntry), claims: z.array(ClaimEntry), tried: z.array(TriedEntry), rules: Rules, mine: Mine, frontier_version: z.number().int(), summary: Summary.nullable().optional() });
+
+export type Remote = { url: string; auth: string };
