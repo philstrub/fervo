@@ -212,3 +212,9 @@ def actor_add(
 def actor_list() -> None:
     """Every actor with its kind, provider, model, harness and whether it is disabled."""
     emit(TypeAdapter(list[Actor]).validate_python(get(load_remote(Path.cwd()), "/actors")))
+
+
+@actor_app.command("disable")
+def actor_disable(id: Annotated[str, typer.Argument(help="The actor to lock out, e.g. codex-1.")], key: Key) -> None:
+    """Revoke an actor's token. Its nodes, claims and verdicts stay in the record."""
+    emit(Actor.model_validate(post(load_remote(Path.cwd()), f"/actors/{id}/disable", key)))
