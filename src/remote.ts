@@ -10,13 +10,20 @@ Every command needs identical authentication, errors, and JSON output.
 ## 3. How It Fits in the Architecture
 The CLI calls these functions; the server owns all state changes.
 ## 4. Key Concepts
-The token lives in Git configuration. Writes carry an idempotency key in the request header.
+The clone's token lives in Git configuration. `FERVO_TOKEN` in the environment takes precedence: it is how
+a harness session acts as its own enrolled actor, and how a human passes a token that is never stored.
+Writes carry an idempotency key in the request header.
 */
 import { git } from './git.js';
 import type { Remote } from './models.js';
 import type { z } from 'zod';
 
 export function loadRemote(cwd: string): Remote {
+  const clone = cloneRemote(cwd);
+  return process.env.FERVO_TOKEN ? { url: clone.url, auth: `Bearer ${process.env.FERVO_TOKEN}` } : clone;
+}
+
+export function cloneRemote(cwd: string): Remote {
   const gitUrl = git(cwd, 'remote', 'get-url', 'origin');
   const header = git(cwd, 'config', '--get', `http.${gitUrl}.extraHeader`);
   if (!header.startsWith('Authorization: ')) throw new Error('invalid Fervo authorization header in Git config');

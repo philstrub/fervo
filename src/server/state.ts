@@ -11,6 +11,12 @@ Agents need replayable writes and a consistent view of Git and policy state.
 The HTTP boundary validates input and calls these synchronous SQLite transactions.
 ## 4. Key Concepts
 Typed IDs identify objects; events provide an audit cursor; main advances by Git compare-and-swap.
+## 5. Enrollment
+A human clone holds an enroller token. Each harness session calls `/enroll` with its session id and
+becomes the actor `<owner>-<first 12 session characters>`, inheriting the enroller's provider and
+harness so a session cannot pick its own judge. Enrolling a known session (resume, compaction) rotates
+that actor's token. A session is `human` only with an unexpired grant from its owner, and its kind
+never changes afterwards.
 */
 import { randomBytes, createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -18,7 +24,7 @@ import { minimatch } from 'minimatch';
 import { z } from 'zod';
 import { spawnSync } from 'node:child_process';
 import { mainConfig, duration } from '../config.js';
-import { ActorIn, ClaimIn, JobResult, ReasonIn, ReviewIn, SubmitIn } from '../models.js';
+import { ActorIn, ClaimIn, EnrollerIn, EnrollIn, JobResult, ReasonIn, ReviewIn, SubmitIn } from '../models.js';
 import { requirements, matches, scopesOverlap } from '../policy.js';
 import { summarize } from '../scoring.js';
 import { builtInPolicyRules } from '../plugins.js';
@@ -28,6 +34,7 @@ type Row = Record<string, any>;
 const newId = (prefix: string) => `${prefix}_${randomBytes(5).toString('hex')}`;
 const now = () => new Date().toISOString();
 const json = (value: unknown) => JSON.stringify(value);
+const sha = (secret: string) => createHash('sha256').update(secret).digest('hex');
 
 export class State {
   constructor(readonly db: Database.Database, readonly repo: string, readonly root: string) {}
@@ -35,7 +42,8 @@ export class State {
   event(actor: string, type: string, subject: string, data: unknown = {}): void { this.db.prepare('INSERT INTO events(at,actor,type,subject,data) VALUES(?,?,?,?,?)').run(now(), actor, type, subject, json(data)); }
   expire():void {for(const claim of this.db.prepare("SELECT id FROM claims WHERE state='active' AND expires_at<=?").all(now()) as Row[]){this.db.prepare("UPDATE claims SET state='expired' WHERE id=?").run(claim.id);this.event('system','claim_expired',claim.id);}}
   job(kind: string, node: string | null, claim: string | null): string { const id = newId('j'); this.db.prepare('INSERT INTO jobs(id,kind,node,claim,payload,state,created_at) VALUES(?,?,?,?,?,?,?)').run(id,kind,node,claim,'{}','queued',now()); this.event('system', 'job_queued', id, { kind, node, claim }); return id; }
-  actor(row: Row): object { return { id: row.id, kind: row.kind, provider: row.provider, model: row.model, harness: row.harness, disabled: Boolean(row.disabled) }; }
+  actor(row: Row): object { return { id: row.id, kind: row.kind, provider: row.provider, model: row.model, harness: row.harness, owner: row.owner ?? null, session: row.session ?? null, disabled: Boolean(row.disabled) }; }
+  branchPrefix(actor: Row): string | null { return actor.kind === 'agent' ? `agents/${actor.id}` : actor.kind === 'human' ? `humans/${actor.id}` : null; }
   status(id: string): object {
     if (id.startsWith('l_')) {
       const claim = this.one('SELECT * FROM claims WHERE id=?', id);
@@ -72,6 +80,33 @@ export class State {
       this.db.prepare('INSERT INTO actors(id,kind,provider,model,harness,token_hash,created_at) VALUES(?,?,?,?,?,?,?)').run(body.id,body.kind,body.provider,body.model,body.harness,createHash('sha256').update(token).digest('hex'),now());
       this.event(actor.id,'actor_created',body.id); return {actor:this.actor({...body,disabled:0}),token};
     }
+    if (path === '/enrollers') {
+      this.human(actor); const body=EnrollerIn.parse(raw); const token=randomBytes(32).toString('hex'); const owner=actor.owner ?? actor.id; const id=`${owner}-clone-${randomBytes(3).toString('hex')}`;
+      this.db.prepare('INSERT INTO actors(id,kind,provider,model,harness,owner,token_hash,created_at) VALUES(?,?,?,?,?,?,?,?)').run(id,'enroller',body.provider,null,body.harness,owner,sha(token),now());
+      this.event(actor.id,'actor_created',id); return {actor:this.actor(this.one('SELECT * FROM actors WHERE id=?',id)),token};
+    }
+    if (path === '/grants') {
+      this.human(actor); const grant=randomBytes(32).toString('hex'); const expiry=new Date(Date.now()+12*3600_000).toISOString(); const owner=actor.owner ?? actor.id;
+      this.db.prepare('INSERT INTO grants(code_hash,owner,expires_at,created_at) VALUES(?,?,?,?)').run(sha(grant),owner,expiry,now());
+      this.event(actor.id,'grant_created',owner,{expires_at:expiry}); return {grant,expires_at:expiry};
+    }
+    if (path === '/enroll') {
+      if (actor.kind !== 'enroller') throw new Error('enroller token required');
+      const body=EnrollIn.parse(raw);
+      if (!this.db.prepare('SELECT 1 FROM actors WHERE id=? AND disabled=0').get(actor.owner)) throw new Error('the human who owns this clone is disabled');
+      if (body.grant !== undefined && !this.db.prepare('SELECT 1 FROM grants WHERE code_hash=? AND owner=? AND expires_at>?').get(sha(body.grant),actor.owner,now())) throw new Error('grant is invalid or expired');
+      const kind=body.grant === undefined ? 'agent' : 'human';
+      const id=`${actor.owner}-${body.session.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,12)}`;
+      const existing=this.db.prepare('SELECT * FROM actors WHERE id=?').get(id) as Row | undefined;
+      const token=randomBytes(32).toString('hex');
+      if (existing) {
+        if (existing.session !== body.session || existing.owner !== actor.owner) throw new Error('session id collides with another actor');
+        if (existing.disabled) throw new Error('session actor is disabled');
+        if (existing.kind !== kind) throw new Error(existing.kind === 'human' ? 'human session: resume it through fervo delegate' : 'agent session cannot gain human powers');
+        this.db.prepare('UPDATE actors SET token_hash=?,model=? WHERE id=?').run(sha(token),body.model,id);
+      } else this.db.prepare('INSERT INTO actors(id,kind,provider,model,harness,owner,session,token_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id,kind,actor.provider,body.model,actor.harness,actor.owner,body.session,sha(token),now());
+      this.event(actor.id,existing?'actor_rotated':'actor_enrolled',id,{kind}); return {actor:this.actor(this.one('SELECT * FROM actors WHERE id=?',id)),token};
+    }
     if (path === '/baseline') { this.human(actor); const id=this.job('baseline',null,null); return this.status(id); }
     if (path === '/claims') {
       if (actor.kind !== 'agent' && actor.kind !== 'human') throw new Error('only contributors can claim');
@@ -88,14 +123,14 @@ export class State {
       this.db.prepare('INSERT INTO claims(id,holder,parent_node,supersedes,intent,scope,state,overlaps_at_grant,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,actor.id,body.parent,body.supersedes ?? null,body.intent,json(body.scope),'active',json(overlaps),expiry,now());
       this.event(actor.id,'claim_created',id,{overlaps});
       const reviewJob=config.claim_review?.enabled?this.job('claim_review',null,id):null;
-      return {lease:id,parent:body.parent,parent_commit:parent.commit_sha,parent_ref:body.parent==='n_0'?'refs/heads/main':`refs/fervo/nodes/${body.parent}`,expires_at:expiry,blocked:config.pinned.paths,overlaps,review_job:reviewJob};
+      return {lease:id,branch:`${this.branchPrefix(actor)}/${id}`,parent:body.parent,parent_commit:parent.commit_sha,parent_ref:body.parent==='n_0'?'refs/heads/main':`refs/fervo/nodes/${body.parent}`,expires_at:expiry,blocked:config.pinned.paths,overlaps,review_job:reviewJob};
     }
     if (path === '/submit') {
       const body=SubmitIn.parse(raw); const claim=this.one('SELECT * FROM claims WHERE id=?',body.lease);
       if(claim.holder!==actor.id || claim.state!=='active' || claim.expires_at<=now()) throw new Error('lease is not active for actor');
       if(this.db.prepare("SELECT 1 FROM jobs WHERE claim=? AND kind='claim_review'").get(claim.id)&&!this.db.prepare("SELECT 1 FROM verdicts WHERE claim=? AND producer='claim_review' AND passed=1").get(claim.id))throw new Error('claim review has not passed');
       const parent=this.one('SELECT * FROM nodes WHERE id=?',claim.parent_node);
-      const branch=`refs/heads/${actor.kind==='agent'?'agents':'humans'}/${actor.id}/${claim.id}`;
+      const branch=`refs/heads/${this.branchPrefix(actor)}/${claim.id}`;
       if(bareGit(this.repo,'rev-parse',branch)!==body.commit) throw new Error('submitted commit is not the pushed lease branch');
       const ancestry=spawnGit(this.repo,'merge-base','--is-ancestor',parent.commit_sha,body.commit);
       const paths=bareGit(this.repo,'diff','--name-only',parent.commit_sha,body.commit).split('\n').filter(Boolean);

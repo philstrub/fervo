@@ -23,7 +23,7 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 const binary = resolve('dist/src/cli/main.js');
-const actor = { id: 'codex-1', kind: 'agent', provider: 'openai', model: 'codex', harness: 'codex', disabled: false };
+const actor = { id: 'codex-1', kind: 'agent', provider: 'openai', model: 'codex', harness: 'codex', owner: null, session: null, disabled: false };
 const context = { goal: 'Improve parser', metrics: [], main: { commit: 'abc', node: 'n_0' }, frontier: [], claims: [], tried: [], rules: { pinned: ['bench/**'], requirements_by_path: { '*': ['tests'] } }, mine: { leases: [], updates: [] }, frontier_version: 1 };
 const node = { node: 'n_1', state: 'rejected', outcome: null, delta: null, interval: null, rank: null, reason: 'pinned path', job: null, next_action: 'stop' };
 
@@ -37,6 +37,10 @@ async function cli(cwd: string, ...args: string[]) {
   return exec(process.execPath, [binary, ...args], { cwd, encoding: 'utf8' });
 }
 
+async function cliAs(token: string, cwd: string, ...args: string[]) {
+  return exec(process.execPath, [binary, ...args], { cwd, encoding: 'utf8', env: { ...process.env, FERVO_TOKEN: token } });
+}
+
 test('context, claim, status wait and submit use compact JSON and the required key', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fervo-cli-'));
   const calls: { method: string; path: string; key: string | null; auth: string | undefined; body: unknown }[] = [];
@@ -45,7 +49,7 @@ test('context, claim, status wait and submit use compact JSON and the required k
     for await (const chunk of request) chunks.push(chunk as Buffer);
     const path = new URL(request.url!, 'http://localhost');
     calls.push({ method: request.method!, path: path.pathname + path.search, key: request.headers['idempotency-key']?.toString() ?? null, auth: request.headers.authorization, body: chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : null });
-    const result = path.pathname === '/context' ? context : path.pathname === '/claims' ? { lease: 'l_1', parent: 'n_0', parent_commit: 'abc', parent_ref: 'refs/fervo/nodes/n_0', expires_at: 'tomorrow', blocked: [], overlaps: [] } : path.pathname === '/submit' ? { node: 'n_1', job: 'j_1' } : node;
+    const result = path.pathname === '/whoami' ? { actor, git_url: bare, branch_prefix: 'agents/codex-1' } : path.pathname === '/context' ? context : path.pathname === '/claims' ? { lease: 'l_1', branch: 'agents/codex-1/l_1', parent: 'n_0', parent_commit: 'abc', parent_ref: 'refs/fervo/nodes/n_0', expires_at: 'tomorrow', blocked: [], overlaps: [] } : path.pathname === '/submit' ? { node: 'n_1', job: 'j_1' } : node;
     response.setHeader('Content-Type', 'application/json');
     response.end(JSON.stringify(result));
   });
@@ -62,7 +66,6 @@ test('context, claim, status wait and submit use compact JSON and the required k
     git(work, 'commit', '--allow-empty', '-m', 'initial');
     git(work, 'remote', 'add', 'origin', bare);
     git(work, 'config', 'fervo.url', url);
-    git(work, 'config', 'fervo.prefix', 'agents/codex-1');
     git(work, 'config', `http.${bare}.extraHeader`, 'Authorization: Bearer secret');
     const contextResult = await cli(work, 'context', '--scope', 'src/');
     assert.deepEqual(JSON.parse(contextResult.stdout), context);
@@ -75,11 +78,13 @@ test('context, claim, status wait and submit use compact JSON and the required k
     assert.deepEqual(JSON.parse(submitResult.stdout), { node: 'n_1', job: 'j_1' });
     assert.equal(git(bare, 'rev-parse', 'refs/heads/agents/codex-1/l_1'), git(work, 'rev-parse', 'HEAD'));
     assert.deepEqual(calls.map(call => [call.method, call.path, call.key]), [
-      ['GET', '/context?scope=src%2F', null], ['POST', '/claims', 'claim-1'], ['GET', '/status/n_1?wait=12', null], ['POST', '/submit', 'submit-1'],
+      ['GET', '/context?scope=src%2F', null], ['POST', '/claims', 'claim-1'], ['GET', '/status/n_1?wait=12', null], ['GET', '/whoami', null], ['POST', '/submit', 'submit-1'],
     ]);
     assert.ok(calls.every(call => call.auth === 'Bearer secret'));
+    await cliAs('session', work, 'context');
+    assert.equal(calls.at(-1)?.auth, 'Bearer session');
     assert.deepEqual(calls[1]?.body, { parent: 'n_0', scope: ['src/'], intent: 'speed up parsing' });
-    assert.deepEqual(calls[3]?.body, { lease: 'l_1', commit: git(work, 'rev-parse', 'HEAD') });
+    assert.deepEqual(calls[4]?.body, { lease: 'l_1', commit: git(work, 'rev-parse', 'HEAD') });
   } finally {
     server.close();
     await rm(root, { recursive: true, force: true });
@@ -114,7 +119,7 @@ test('missing key and malformed API response exit with diagnostics on stderr', a
   }
 });
 
-test('clone stores the token in Git config and a rebased claim links its old node', async () => {
+test('clone stores an agent token in Git config and a rebased claim links its old node', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fervo-clone-'));
   const bare = join(root, 'repo.git');
   const seed = join(root, 'seed');
@@ -123,10 +128,10 @@ test('clone stores the token in Git config and a rebased claim links its old nod
   const server = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(chunk as Buffer);
-    if (request.url === '/whoami') response.end(JSON.stringify({ actor, git_url: bare }));
+    if (request.url === '/whoami') response.end(JSON.stringify({ actor, git_url: bare, branch_prefix: 'agents/codex-1' }));
     else {
       calls.push(JSON.parse(Buffer.concat(chunks).toString()));
-      response.end(JSON.stringify({ lease: 'l_2', parent: 'n_1', parent_commit: 'abc', parent_ref: 'refs/fervo/nodes/n_1', expires_at: 'tomorrow', blocked: [], overlaps: [] }));
+      response.end(JSON.stringify({ lease: 'l_2', branch: 'agents/codex-1/l_2', parent: 'n_1', parent_commit: 'abc', parent_ref: 'refs/fervo/nodes/n_1', expires_at: 'tomorrow', blocked: [], overlaps: [] }));
     }
   });
   await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
@@ -141,7 +146,7 @@ test('clone stores the token in Git config and a rebased claim links its old nod
     git(seed, 'push', 'origin', 'HEAD:main');
     git(bare, 'symbolic-ref', 'HEAD', 'refs/heads/main');
     const result = await cli(root, 'clone', url, clone, '--token', 'secret');
-    assert.equal(JSON.parse(result.stdout).branch_prefix, 'agents/codex-1');
+    assert.equal(JSON.parse(result.stdout).actor.id, 'codex-1');
     assert.equal(git(clone, 'config', '--get', 'fervo.url'), url);
     assert.equal(git(clone, 'config', '--get', `http.${bare}.extraHeader`), 'Authorization: Bearer secret');
     await cli(clone, 'claim', '--parent', 'n_1', '--supersedes', 'n_0', '--scope', 'src/', '--intent', 'rebase', '--key', 'new-lease');
@@ -174,12 +179,13 @@ test('operator writes preserve idempotency keys and return validated objects', a
     git(root, 'remote', 'add', 'origin', 'file:///unused');
     git(root, 'config', 'fervo.url', `http://127.0.0.1:${(server.address() as { port: number }).port}`);
     git(root, 'config', 'http.file:///unused.extraHeader', 'Authorization: Bearer secret');
-    assert.equal(JSON.parse((await cli(root, 'actor', 'add', 'filippo', '--kind', 'human', '--key', 'actor-1')).stdout).token, 'shown-once');
-    await cli(root, 'actor', 'disable', 'filippo', '--key', 'actor-2');
+    await assert.rejects(cli(root, 'merge', 'n_1', '--reason', 'manual override', '--key', 'merge-0'), /human token required/);
+    assert.equal(JSON.parse((await cliAs('human', root, 'actor', 'add', 'filippo', '--kind', 'human', '--key', 'actor-1')).stdout).token, 'shown-once');
+    await cliAs('human', root, 'actor', 'disable', 'filippo', '--key', 'actor-2');
     await cli(root, 'release', 'l_1', '--key', 'release-1');
-    await cli(root, 'review', 'n_1', '--fail', '--evidence', 'tests failed', '--key', 'review-1');
-    await cli(root, 'merge', 'n_1', '--reason', 'manual override', '--key', 'merge-1');
-    await cli(root, 'baseline', '--key', 'baseline-1');
+    await cliAs('human', root, 'review', 'n_1', '--fail', '--evidence', 'tests failed', '--key', 'review-1');
+    await cliAs('human', root, 'merge', 'n_1', '--reason', 'manual override', '--key', 'merge-1');
+    await cliAs('human', root, 'baseline', '--key', 'baseline-1');
     assert.deepEqual(calls.map(call => [call.path, call.key]), [
       ['/actors', 'actor-1'], ['/actors/filippo/disable', 'actor-2'], ['/claims/l_1/release', 'release-1'], ['/nodes/n_1/verdicts', 'review-1'], ['/nodes/n_1/merge', 'merge-1'], ['/baseline', 'baseline-1'],
     ]);

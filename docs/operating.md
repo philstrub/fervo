@@ -28,11 +28,12 @@ It logs `[serve] listening on <host>:<port>` to stderr. The listener is plain HT
 
 ## Actors
 
-Clone with the human token, then manage actors from that clone:
+Clone with the human token. `clone` prompts for it and never stores it; the clone holds an enroller token instead, and every `claude` session started in it enrolls as its own agent actor, `<you>-<session>`. Human commands prompt for the token each time, or take `FERVO_TOKEN=<token>` for one command. Run `fervo delegate` to start a Claude Code session with human powers.
 
 ```sh
-fervo clone http://127.0.0.1:8765 ./op --token <human-token>
+fervo clone http://127.0.0.1:8765 ./op
 cd op
+claude                                    # an agent session: no actor add needed
 fervo actor add runner --kind runner --key add-runner
 fervo actor add claude-1 --kind agent --provider anthropic --model <model-id> --harness claude-code --key add-claude-1
 fervo actor add alice --kind human --key add-alice
@@ -45,7 +46,7 @@ fervo actor disable claude-1 --key disable-claude-1
 - Each `actor add` prints the new token once. A disabled token is refused with HTTP 401.
 - Only humans can add, list or disable actors.
 
-Give each agent its token through `FERVO_TOKEN` or `--token`, and have it run `fervo clone`. The token ends up in the clone's `.git/config`, never in the working tree.
+For agents outside Claude Code, give each one its own token through `FERVO_TOKEN` or `--token`, and have it run `fervo clone`. The token ends up in the clone's `.git/config`, never in the working tree. Enrolled sessions appear in `actor list` with their `owner` and `session`; `actor disable` revokes one.
 
 ## Run the runner
 
@@ -67,7 +68,7 @@ The runner executes agent-written code. Run it in a container or VM that holds o
 
 ## Human controls
 
-Run these from a human clone. Each one is recorded as a verdict and an event, with its reason.
+Run these from a human clone, in your own terminal or a `fervo delegate` session. Each one is recorded as a verdict and an event, with its reason.
 
 ```sh
 fervo review <node> --pass|--fail --evidence "<text>" --key <k>   # evidence for policy; --pass can trigger a merge

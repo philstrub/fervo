@@ -8,12 +8,12 @@ This page is for a coding agent working in a repository whose remote is Fervo. `
 - A `rejected` or `failed` node is a normal JSON result, not an error.
 - Every write takes `--key`. Use a fresh key for each new write. Reuse a key only to repeat the same write after an uncertain result.
 - IDs are opaque: `l_…` lease, `n_…` node, `j_…` job. Copy them from responses; never construct them.
-- Run commands inside your clone. The URL, token and branch prefix live in its `.git/config`.
+- Run commands inside your clone. The URL lives in its `.git/config`. The token is `FERVO_TOKEN` when set, which is how a Claude Code session in a human clone runs as its own enrolled actor; otherwise it is the clone's.
 
 ## Loop
 
 ```sh
-fervo clone <url> <dir> --token <agent-token>      # or FERVO_TOKEN=<token>
+fervo clone <url> <dir> --token <agent-token>      # skip in an enrolled Claude Code session
 cd <dir>
 fervo context [--scope src/]
 fervo claim --parent <main.node> --scope src/a/ [--scope src/b/] \
@@ -25,7 +25,7 @@ fervo status <node> --wait                         # repeat while next_action is
 ```
 
 1. **Read context.** Check `goal` and `rules.pinned`. Skip directions in `tried` that already failed or were within noise, and build on `frontier` nodes when they suit you. Avoid scopes held in `claims`.
-2. **Claim.** Use the current `main.node` as `--parent`, unless you are deliberately building on a frontier node. Keep the intent concrete and the scope narrow. `--checkout` creates `<branch_prefix>/<lease>` at the parent.
+2. **Claim.** Use the current `main.node` as `--parent`, unless you are deliberately building on a frontier node. Keep the intent concrete and the scope narrow. `--checkout` creates the claim's `branch` at the parent.
 3. **Read the claim response.** If `overlaps` is non-empty, narrow your scope, choose another direction, or proceed on purpose. Never edit a path in `blocked`.
 4. **Work** with plain Git. Commit everything: `submit` refuses uncommitted tracked changes.
 5. **Renew** before `expires_at` if needed. A claim lasts 2 hours, and renewal is never automatic.
@@ -50,7 +50,7 @@ A rebase is a new claim on the current `main` that names your old node:
 ```sh
 MAIN=$(fervo context | jq -r .main.node)
 fervo claim --parent "$MAIN" --supersedes <old-node> --scope <same> --intent "<same>, rebased" --key <new> --checkout
-git cherry-pick <old claim's parent_commit>..<branch_prefix>/<old-lease>
+git cherry-pick <old claim's parent_commit>..<old claim's branch>
 fervo submit --lease <new-lease> --key <new>
 ```
 
@@ -64,9 +64,9 @@ If a command fails with no clear answer (a network error or a crash), run the id
 
 | From | Keep | Needed for |
 |---|---|---|
-| `clone` | `path`, `branch_prefix` | the working directory; the old branch during a rebase |
+| `clone` | `path` | the working directory |
 | `context` | `main.node`, `rules.pinned`, `claims`, `tried`, `frontier` | `--parent`; paths to avoid; directions to skip or build on |
-| `claim` | `lease`, `parent_commit`, `expires_at`, `blocked`, `overlaps`, `review_job` | `submit`, `renew`, `release`; the cherry-pick base; renewing in time |
+| `claim` | `lease`, `branch`, `parent_commit`, `expires_at`, `blocked`, `overlaps`, `review_job` | `submit`, `renew`, `release`; the cherry-pick base; renewing in time |
 | `submit` | `node`, `job` | `status`, `retry`, `abandon`, `--supersedes` |
 | `status` | `state`, `outcome`, `delta`, `interval`, `reason`, `next_action` | the next step |
 | yourself | each `--key` with its exact arguments | safe replays |

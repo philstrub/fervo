@@ -22,7 +22,8 @@ import { join, resolve } from 'node:path';
 import { runRunner } from '../src/runner/run.js';
 
 const cli=resolve('dist/src/cli/main.js');
-function command(cwd:string,bin:string,...args:string[]):string {const r=spawnSync(bin,args,{cwd,encoding:'utf8'});assert.equal(r.status,0,`${bin} ${args.join(' ')}: ${r.stderr}`);return r.stdout.trim();}
+function run(cwd:string,env:NodeJS.ProcessEnv,bin:string,...args:string[]):string {const r=spawnSync(bin,args,{cwd,env,encoding:'utf8'});assert.equal(r.status,0,`${bin} ${args.join(' ')}: ${r.stderr}`);return r.stdout.trim();}
+function command(cwd:string,bin:string,...args:string[]):string {return run(cwd,process.env,bin,...args);}
 function fervo(cwd:string,...args:string[]):any{return JSON.parse(command(cwd,process.execPath,cli,...args));}
 
 test('scripted agent reaches main through baseline, eval, review and postmerge',async()=>{
@@ -39,8 +40,9 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
     try {
       const url=`http://127.0.0.1:${port}`;
       const human=join(tmp,'human');fervo(tmp,'clone',url,human,'--token',init.token);
-      const runner=fervo(human,'actor','add','runner','--kind','runner','--key','add-runner');
-      const agent=fervo(human,'actor','add','agent-1','--kind','agent','--provider','openai','--model','test','--harness','script','--key','add-agent');
+      const asHuman=(...args:string[])=>JSON.parse(run(human,{...process.env,FERVO_TOKEN:init.token},process.execPath,cli,...args));
+      const runner=asHuman('actor','add','runner','--kind','runner','--key','add-runner');
+      const agent=asHuman('actor','add','agent-1','--kind','agent','--provider','openai','--model','test','--harness','script','--key','add-agent');
       const settings={anthropicModel:'fake',openaiModel:'fake',reviewProvider:'anthropic',reviewModel:'fake',judgeTemplate:'Compare the change',reviewTemplate:'Review the change'};
       const model=async(_provider:string,_model:string,prompt:string)=>prompt.includes('Return only JSON {"passed"')?{passed:true,evidence:'review passed'}:{preference:0.5,evidence:'neutral'};
       await runRunner(url,runner.token,settings,model,true);
@@ -76,7 +78,7 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
       const pinnedNode=fervo(clone,'submit','--lease',pinned.lease,'--key','pinned-submit').node;
       assert.equal(fervo(clone,'status',pinnedNode).state,'rejected');
 
-      const secondActor=fervo(human,'actor','add','agent-2','--kind','agent','--provider','openai','--model','test','--harness','script','--key','add-agent-2');
+      const secondActor=asHuman('actor','add','agent-2','--kind','agent','--provider','openai','--model','test','--harness','script','--key','add-agent-2');
       const clone2=join(tmp,'agent2');fervo(tmp,'clone',url,clone2,'--token',secondActor.token);
       command(clone2,'git','config','user.email','agent2@example.com');command(clone2,'git','config','user.name','Agent Two');
       const firstClaim=fervo(clone,'claim','--parent',submitted.node,'--scope','score.txt','--intent','raise to 14','--key','parallel-1','--checkout');
@@ -106,7 +108,7 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
       const overrideNode=fervo(clone,'submit','--lease',override.lease,'--key','override-submit').node;
       await runRunner(url,runner.token,settings,model,true);
       assert.equal(fervo(clone,'status',overrideNode).outcome,'within_noise');
-      assert.equal(fervo(human,'merge',overrideNode,'--reason','approved docs change','--key','override-merge').state,'merged');
+      assert.equal(asHuman('merge',overrideNode,'--reason','approved docs change','--key','override-merge').state,'merged');
     } finally {server.kill();await new Promise<void>(resolve=>server.on('exit',()=>resolve()));}
   } finally {rmSync(tmp,{recursive:true,force:true});}
 });

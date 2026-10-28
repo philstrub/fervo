@@ -1,16 +1,27 @@
 # CLI reference
 
-`fervo <command> [options]`. Every command prints one JSON value on stdout: indented in a terminal, one line otherwise. On error, the message goes to stderr, stdout stays empty, and the exit code is 1. Commands other than `init`, `serve` and `runner` read the server and token from the current clone. `--key <key>` is required on every write.
+`fervo <command> [options]`. Every command prints one JSON value on stdout: indented in a terminal, one line otherwise. On error, the message goes to stderr, stdout stays empty, and the exit code is 1. Commands other than `init`, `serve` and `runner` read the server from the current clone, and the token from `FERVO_TOKEN` or, when that is unset, from the clone. `--key <key>` is required on every write.
 
 ## Agents and humans
 
-### `clone <url> <directory> --token <t>`
+### `clone <url> <directory> [--token <t>] [--provider anthropic] [--harness claude-code]`
 
-Clones the repository and stores the server URL, an `Authorization` header and the branch prefix in `.git/config`. `--token` falls back to `FERVO_TOKEN`. Runner tokens are refused.
+Clones the repository and stores the server URL and an `Authorization` header in `.git/config`. `--token` falls back to `FERVO_TOKEN`, then to a prompt on the terminal. Runner tokens are refused.
+
+- **Agent token:** the header carries that token.
+- **Human token:** the token is not stored. The server creates an `enroller` actor with the given provider and harness, and the header carries its token. The clone gets `.claude/settings.local.json` with a SessionStart hook that runs `fervo enroll`, listed in `.git/info/exclude`.
 
 ```json
-{"path": "/abs/dir", "actor": {"id": "agent-1", "kind": "agent", "provider": "openai", "model": "m", "harness": "codex", "disabled": false}, "branch_prefix": "agents/agent-1"}
+{"path": "/abs/dir", "actor": {"id": "agent-1", "kind": "agent", "provider": "openai", "model": "m", "harness": "codex", "owner": null, "session": null, "disabled": false}}
 ```
+
+### `enroll`
+
+The Claude Code SessionStart hook; not for direct use. It reads the hook's JSON on stdin, enrolls the session as `<owner>-<12 session characters>`, appends `export FERVO_TOKEN=…` to `$CLAUDE_ENV_FILE`, and prints `additionalContext` naming the actor, followed by `skill/SKILL.md`. If `FERVO_TOKEN` in its environment belongs to an actor without a session, such as your human token exported in the shell, it unsets `FERVO_TOKEN` for the session's commands, enrolls nothing, and exits 2 so Claude Code shows the error. The agent could otherwise read the token.
+
+### `delegate [-- <claude args>]`
+
+Human only. Creates a 12-hour grant and starts `claude` with it. That session enrolls as a `human` actor owned by you. `FERVO_TOKEN` is removed from its environment.
 
 ### `context [--scope <path>]...`
 
@@ -27,10 +38,10 @@ Clones the repository and stores the server URL, an `Authorization` header and t
 
 ### `claim --parent <node> --scope <path>... --intent <text> --key <k> [--supersedes <node>] [--checkout]`
 
-Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--supersedes` requires that you authored that node and that the parent is the current `main` node. `--checkout` fetches `parent_ref` and creates the branch `<branch_prefix>/<lease>`.
+Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--supersedes` requires that you authored that node and that the parent is the current `main` node. `--checkout` fetches `parent_ref` and creates `branch`.
 
 ```json
-{"lease": "l_…", "parent": "n_0", "parent_commit": "…", "parent_ref": "refs/heads/main", "expires_at": "…", "blocked": ["fervo.toml", "bench.sh"], "overlaps": [{"kind": "claim", "id": "l_…", "by": "agent-1", "scope": ["src/a.txt"], "intent": "…"}], "review_job": null}
+{"lease": "l_…", "branch": "agents/agent-1/l_…", "parent": "n_0", "parent_commit": "…", "parent_ref": "refs/heads/main", "expires_at": "…", "blocked": ["fervo.toml", "bench.sh"], "overlaps": [{"kind": "claim", "id": "l_…", "by": "agent-1", "scope": ["src/a.txt"], "intent": "…"}], "review_job": null}
 ```
 
 ### `renew <lease> --key <k>` · `release <lease> --key <k>`
@@ -39,7 +50,7 @@ Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--su
 
 ### `submit --lease <lease> --key <k>`
 
-Refuses uncommitted tracked changes. Pushes HEAD to `refs/heads/<branch_prefix>/<lease>`, then records the node. Returns `{"node": "n_…", "job": "j_…"}`. A node that touches a pinned path is returned but already `rejected`.
+Refuses uncommitted tracked changes. Pushes HEAD to the lease branch with the current token, replacing the clone's header, then records the node. Returns `{"node": "n_…", "job": "j_…"}`. A node that touches a pinned path is returned but already `rejected`.
 
 ### `status <id> [--wait] [--timeout <1-30>]`
 
@@ -65,13 +76,15 @@ Marks the node `abandoned`. Author or human only. Returns the node status.
 
 ## Humans
 
+These commands read the human token from `FERVO_TOKEN`, or prompt for it on the terminal when it is unset. In a `fervo delegate` session, `FERVO_TOKEN` already holds a human token.
+
 | Command | Effect |
 |---|---|
 | `review <node> --pass\|--fail --evidence <text> --key <k>` | Records a human verdict, then re-runs policy. Returns the verdict. |
 | `merge <node> --reason <text> --key <k>` | Merges a `verified` node whose parent is `main`. |
 | `veto <node> --reason <text> --key <k>` | Marks the node `abandoned`. |
 | `revert <node> --reason <text> --key <k>` | Moves `main` back to the parent. Only for the current head. |
-| `actor add <id> --kind human\|agent\|runner [--provider] [--model] [--harness] --key <k>` | Returns `{actor, token}`. The token is shown once. |
+| `actor add <id> --kind human\|agent\|runner [--provider] [--model] [--harness] --key <k>` | Returns `{actor, token}`. The token is shown once; a replay returns `token: null`. |
 | `actor list` | Lists all actors. |
 | `actor disable <id> --key <k>` | Revokes the token. |
 | `baseline --key <k>` | Queues a re-measurement of `main`. Returns the job. |
@@ -99,6 +112,13 @@ Marks the node `abandoned`. Author or human only. Returns the node status.
 | `supersedes must name your node and current main parent` | wrong `--parent` or someone else's node | use `context.main.node` |
 | `only failed nodes can retry` | the node did not fail | read `next_action` |
 | `human token required` | a human-only command | ask a human |
+| `human token required: run this in a terminal, or set FERVO_TOKEN for this one command` | a human command with no `FERVO_TOKEN` and no terminal | run it yourself, or use `fervo delegate` |
+| `enroller token required` | `/enroll` called with a session or human token | only the clone's hook enrolls |
+| `grant is invalid or expired` | `FERVO_GRANT` unknown, expired, or another human's | start again with `fervo delegate` |
+| `human session: resume it through fervo delegate` | a delegated session resumed with plain `claude` | `fervo delegate -- --resume` |
+| `agent session cannot gain human powers` | `delegate` resuming an agent session | start a new session with `fervo delegate` |
+| `session actor is disabled` | a human disabled this session's actor | start a new session |
+| `FERVO_TOKEN of <id> is in the environment Claude Code inherited…` | your human token is exported in the shell | unset it and restart `claude` |
 | `HTTP 401` `invalid or disabled token` | bad or revoked token | get a new token |
 | `--timeout must be an integer from 1 to 30` | bad `status --timeout` | use 1–30 |
 | `push denied: <ref>` (from Git) | push outside your prefix | use `fervo submit` |

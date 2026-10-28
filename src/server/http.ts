@@ -10,7 +10,8 @@ Agents and the runner need one durable, replayable authority for state changes.
 ## 3. How It Fits in the Architecture
 The server owns SQLite and bare Git; the runner and CLI remain clients.
 ## 4. Key Concepts
-Every write has an idempotency key; a repeated body returns its original response.
+Every write has an idempotency key; a repeated body returns its original response, except that a
+replayed `token` or `grant` is null: secrets are shown once and only their hashes are stored.
 */
 import { createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -46,7 +47,7 @@ export function createFervoServer(root: string) {
       const url = new URL(req.url!, `http://${req.headers.host}`);
       if (url.pathname.startsWith('/git/')) { await gitHttp(req,res,root,actor.id,actor.kind); return; }
       if (req.method === 'GET') {
-        if (url.pathname === '/whoami') { send(res,200,{actor:state.actor(actor),git_url:`http://${req.headers.host}/git/repo.git`}); return; }
+        if (url.pathname === '/whoami') { send(res,200,{actor:state.actor(actor),git_url:`http://${req.headers.host}/git/repo.git`,branch_prefix:state.branchPrefix(actor)}); return; }
         if (url.pathname === '/actors') { if(actor.kind!=='human')throw new Error('human token required');send(res,200,(db.prepare('SELECT * FROM actors ORDER BY created_at').all() as Record<string,any>[]).map(a=>state.actor(a)));return; }
         if (url.pathname === '/context') { send(res,200,state.context(actor.id,url.searchParams.getAll('scope')));return; }
         const status=/^\/status\/([^/]+)$/.exec(url.pathname);
@@ -72,7 +73,7 @@ export function createFervoServer(root: string) {
           else if(/^\/jobs\/[^/]+\/heartbeat$/.test(url.pathname))result=state.heartbeat(actor,url.pathname.split('/')[2]!);
           else if(/^\/jobs\/[^/]+\/result$/.test(url.pathname))result=state.result(actor,url.pathname.split('/')[2]!,input);
           else result=state.write(actor,url.pathname,input);
-          db.prepare('INSERT INTO idempotency(actor,key,request_hash,response) VALUES(?,?,?,?)').run(actor.id,key,digest,JSON.stringify(result));
+          db.prepare('INSERT INTO idempotency(actor,key,request_hash,response) VALUES(?,?,?,?)').run(actor.id,key,digest,JSON.stringify(result,(field,value)=>field==='token'||field==='grant'?null:value));
           return result;
         })();
         send(res,200,output);return;

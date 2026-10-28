@@ -15,6 +15,15 @@ One dated line per choice that changes `dev_docs/03-fervo-engineering-plan.md`. 
 - 2026-10-27. `fervo frontier` is dropped. `fervo context` already returns the frontier, and a second command for a slice of the same query is surface without a user.
 - 2026-10-27. Server-side commands (`init`, `serve`, `hook pre-receive`, `runner`, `import`) and `skill install` are not in this branch. They belong to the repo-management and judgment work, and SKILL.md should describe behaviour that exists.
 
+## Session enrollment (branch `feat/session-enrollment`)
+
+- 2026-10-28. A human clone never stores the human token. It stores an `enroller` token, which can only create agent actors owned by that human. Before this, a Claude Code session in a human clone held full human powers and could review and merge its own nodes.
+- 2026-10-28. One actor per harness session, id `<owner>-<12 session characters>`, created by a Claude Code SessionStart hook that `fervo clone` writes to `.claude/settings.local.json`. A per-clone actor would fix the privilege hole but not idempotency-key collisions or per-session attribution for the study.
+- 2026-10-28. The token reaches the session through `$CLAUDE_ENV_FILE` as `FERVO_TOKEN`, which takes precedence over `.git/config` in every command. `submit` pushes with it, replacing the clone's header, so the branch prefix comes from `/whoami` and the claim response carries `branch`. `fervo.prefix` is gone.
+- 2026-10-28. Provider and harness are fixed per clone, not reported by the session, so a session cannot choose the provider of its own judge. `model` comes from the hook and is informative only.
+- 2026-10-28. Human powers in a session need a grant (`fervo delegate`), valid 12 hours and reusable within that time, so compaction and `/clear` re-enroll without a new prompt. A session's kind never changes.
+- 2026-10-28. Re-enrolling a session rotates its token instead of replaying a stored one. Responses stored for idempotent replay have `token` and `grant` nulled, so the database holds only hashes. A replayed `actor add` therefore returns `token: null`.
+
 ## Package, runner, and study decisions
 
 - 2026-10-27. TypeScript on Node.js 24 LTS for the package, CLI, server, runner, and tests. Migrate the existing Python CLI prototype rather than maintaining two implementations.

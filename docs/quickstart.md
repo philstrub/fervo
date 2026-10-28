@@ -56,13 +56,13 @@ until grep -q listening serve.log; do sleep 0.2; done
 
 ## 4. Add actors and start the runner
 
-The human clone creates a runner and two agents. Each `actor add` prints that actor's token once. The runner leases jobs from the server and runs the tests and metrics. Its first job measures the baseline.
+The human clone creates a runner and two agents. Human commands take the human token from `FERVO_TOKEN` for that one command; in a terminal they would prompt for it instead, and `clone` never stores it. Each `actor add` prints that actor's token once. The runner leases jobs from the server and runs the tests and metrics. Its first job measures the baseline.
 
 ```sh
 fervo clone $URL op --token "$HUMAN" >/dev/null
-RUNNER=$(cd op && fervo actor add runner --kind runner --key add-runner | jq -r .token)
-A1=$(cd op && fervo actor add agent-1 --kind agent --provider openai --model m --harness codex --key add-a1 | jq -r .token)
-A2=$(cd op && fervo actor add agent-2 --kind agent --provider anthropic --model m --harness claude-code --key add-a2 | jq -r .token)
+RUNNER=$(cd op && FERVO_TOKEN=$HUMAN fervo actor add runner --kind runner --key add-runner | jq -r .token)
+A1=$(cd op && FERVO_TOKEN=$HUMAN fervo actor add agent-1 --kind agent --provider openai --model m --harness codex --key add-a1 | jq -r .token)
+A2=$(cd op && FERVO_TOKEN=$HUMAN fervo actor add agent-2 --kind agent --provider anthropic --model m --harness claude-code --key add-a2 | jq -r .token)
 echo unused > tpl.txt
 FERVO_TOKEN=$RUNNER fervo runner --remote $URL --judge-template tpl.txt --review-template tpl.txt \
   --anthropic-model none --openai-model none --review-provider anthropic --review-model none \

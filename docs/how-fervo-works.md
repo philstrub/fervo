@@ -13,13 +13,13 @@
 
 - **Server** (`fervo serve`): the only writer. It owns the bare repository and the SQLite database. It authenticates every request, serves Git over smart HTTP at `/git/repo.git`, and answers the JSON API. It never calls a model and never runs submitted code.
 - **Runner** (`fervo runner`): an API client with a runner token. It leases jobs, checks out commits in temporary worktrees, runs the tests and metrics, calls the models with the operator's keys, and posts verdicts back.
-- **CLI** (`fervo`): agents and humans use it for everything except editing, which is plain Git. It reads the server URL and token from the clone's `.git/config`.
+- **CLI** (`fervo`): agents and humans use it for everything except editing, which is plain Git. It reads the server URL from the clone's `.git/config`, and the token from `FERVO_TOKEN` or, when that is unset, from `.git/config`.
 
 ## Objects
 
 | Object | ID | What it is |
 |---|---|---|
-| Actor | its name | A token holder: `human`, `agent` or `runner`. Agents carry a `provider`, `model` and `harness`. |
+| Actor | its name | A token holder: `human`, `agent`, `runner` or `enroller`. Agents carry a `provider`, `model` and `harness`. Enrolled actors also carry their `owner` and harness `session`. |
 | Claim | `l_…` | A declaration made before work starts: parent node, scope, intent. Called a *lease* in commands. |
 | Node | `n_…` | A submitted commit, with its parent node, changed paths, state, outcome and score. `n_0` is the initial `main`. |
 | Job | `j_…` | Runner work: `baseline`, `eval`, `review`, `postmerge`, `claim_review`. |
@@ -27,6 +27,17 @@
 | Event | sequence number | An append-only log of every change. |
 
 `context`, the frontier, overlaps and tried directions are not stored; each request recomputes them from these tables.
+
+## Identities
+
+Two kinds of clone exist:
+
+- **Agent clone.** `fervo clone` with an agent token stores that token in `.git/config`. The clone is that agent's. Use it for headless agents and for harnesses other than Claude Code.
+- **Human clone.** `fervo clone` with a human token (prompted when absent) never stores it. The server creates an `enroller` actor owned by that human, and the clone stores the enroller's token. An enroller can read and fetch, and it can enroll sessions. It cannot push, claim, review or manage actors. The clone also gets `.claude/settings.local.json`, excluded from Git, with a SessionStart hook that runs `fervo enroll`.
+
+Each Claude Code session started in a human clone calls `POST /enroll` with its session id and becomes the actor `<owner>-<first 12 characters of the session id>`. The hook writes `export FERVO_TOKEN=<token>` to `$CLAUDE_ENV_FILE`, so every shell command in that session runs as that actor. The actor's provider and harness come from the enroller, fixed at clone time, so a session cannot choose its own judge. Enrolling a known session again (resume, compaction) rotates its token. Each session therefore has its own branch prefix, its own `mine`, and its own idempotency keys.
+
+A human reaches human-only commands in two ways: by typing the token at the prompt the CLI shows for them, or by `fervo delegate`. `delegate` asks for the token, creates a 12-hour grant, and starts `claude` with that grant in its environment. That session then enrolls as a `human` actor owned by the human. A session's kind never changes: an agent session cannot become human, and a human session resumed without `delegate` is refused.
 
 ## A claim's life
 
@@ -100,7 +111,7 @@ refs/heads/humans/<actor>/<lease>  pushed by that human
 refs/fervo/nodes/<node>            created at submit; never moves
 ```
 
-A `pre-receive` hook rejects any push outside the pusher's own prefix. Runner tokens cannot push at all.
+A `pre-receive` hook rejects any push outside the pusher's own prefix. Runner and enroller tokens cannot push at all, so in a human clone only `fervo submit`, which pushes with the session's `FERVO_TOKEN`, can push.
 
 ## Writes and retries
 

@@ -1,6 +1,6 @@
 # Fervo agent workflow
 
-Use Fervo when a repository's remote is managed by Fervo. Run `fervo --help` for the installed command surface. Commands return one JSON value on stdout; errors go to stderr with a nonzero exit. Keep the returned IDs and use a fresh `--key` for each new write. Reuse that key only to retry the same write after an uncertain result.
+Use Fervo when a repository's remote is managed by Fervo. In a Claude Code session started in a human clone, you are already enrolled: `FERVO_TOKEN` in your shell is your own actor's token. Do not clone, and do not look for another token. Run `fervo --help` for the installed command surface. Commands return one JSON value on stdout; errors go to stderr with a nonzero exit. Keep the returned IDs and use a fresh `--key` for each new write. Reuse that key only to retry the same write after an uncertain result.
 
 ## Loop
 

@@ -58,16 +58,17 @@ fervo serve --root ./managed --host 127.0.0.1 --port 8765
 
 `init` creates `managed/repo.git`, `managed/.fervo/fervo.db`, a pre-receive hook, baseline node `n_0`, and a baseline job. It prints the first human token once. The root directory must not already exist. The HTTP listener is intended for localhost or a TLS reverse proxy.
 
-In another shell, use the human token to create actors:
+In another shell, clone with the human token. `clone` prompts for it on the terminal and never stores it: the clone gets an enroller token instead, and a Claude Code hook that makes every `claude` session started there its own agent actor. Human-only commands prompt for the token again, or read it from `FERVO_TOKEN` for that one command.
 
 ```sh
-FERVO_TOKEN=<human-token> fervo clone http://127.0.0.1:8765 ./operator-clone
-cd operator-clone
+fervo clone http://127.0.0.1:8765 ./my-clone
+cd my-clone
 fervo actor add runner --kind runner --key create-runner
-fervo actor add agent-1 --kind agent --provider openai --model <model-id> --harness codex --key create-agent-1
+claude                                   # this session is now an agent actor
+fervo delegate                           # or: a Claude Code session with your human powers
 ```
 
-Each `actor add` prints its token once. Run the operator-side runner with its own token and provider keys:
+Agents on other harnesses or machines get their own token from `fervo actor add <id> --kind agent --provider <p> --model <m> --harness <h> --key <k>`. Each `actor add` prints its token once. Run the operator-side runner with its own token and provider keys:
 
 ```sh
 FERVO_TOKEN=<runner-token> OPENAI_API_KEY=<key> ANTHROPIC_API_KEY=<key> \

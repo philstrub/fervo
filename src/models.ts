@@ -15,19 +15,27 @@ Claims reserve intent and scope; nodes identify submitted commits. Writes carry 
 GET /whoami, /context, and /status/:id are reads. Status accepts a bounded `wait` query in seconds.
 POST /claims, /submit, /baseline, /actors, and actor/claim/node action paths are writes.
 A new claim can name `supersedes` when the target moved; submit uses its new lease.
+## 6. Enrollment
+A human clone holds an `enroller` token, never the human's own. POST /enrollers (human) mints one;
+POST /enroll (enroller) gives a harness session its own actor, `agent` by default or `human` with a
+grant from POST /grants (human). Responses that carry a `token` or `grant` are stored for replay with
+that field set to null, so the database never holds a usable secret.
 */
 import { z } from 'zod';
 
 const id = z.string().min(1);
 const pathList = z.array(z.string().min(1));
-export const ActorKind = z.enum(['human', 'agent', 'runner', 'system']);
-export const Actor = z.object({ id, kind: ActorKind, provider: z.string().nullable(), model: z.string().nullable(), harness: z.string().nullable(), disabled: z.boolean() });
-export const ActorIn = Actor.pick({ id: true, kind: true, provider: true, model: true, harness: true }).extend({ id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) });
-export const ActorCreated = z.object({ actor: Actor, token: id });
-export const Whoami = z.object({ actor: Actor, git_url: z.string().min(1) });
+export const ActorKind = z.enum(['human', 'agent', 'runner', 'enroller', 'system']);
+export const Actor = z.object({ id, kind: ActorKind, provider: z.string().nullable(), model: z.string().nullable(), harness: z.string().nullable(), owner: z.string().nullable(), session: z.string().nullable(), disabled: z.boolean() });
+export const ActorIn = Actor.pick({ id: true, kind: true, provider: true, model: true, harness: true }).extend({ id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/), kind: z.enum(['human', 'agent', 'runner']) });
+export const ActorCreated = z.object({ actor: Actor, token: id.nullable() });
+export const Whoami = z.object({ actor: Actor, git_url: z.string().min(1), branch_prefix: z.string().nullable() });
+export const EnrollerIn = z.object({ provider: id, harness: id });
+export const EnrollIn = z.object({ session: z.string().regex(/^[A-Za-z0-9-]{8,}$/), model: z.string().nullable(), grant: id.optional() });
+export const Grant = z.object({ grant: id.nullable(), expires_at: id });
 export const ClaimIn = z.object({ parent: id, supersedes: id.optional(), scope: pathList.min(1), intent: id });
 export const Overlap = z.object({ kind: z.enum(['claim', 'node']), id, by: id, scope: pathList, intent: id });
-export const ClaimOut = z.object({ lease: id, parent: id, parent_commit: id, parent_ref: id, expires_at: id, blocked: pathList, overlaps: z.array(Overlap), review_job: id.nullable().optional() });
+export const ClaimOut = z.object({ lease: id, branch: id, parent: id, parent_commit: id, parent_ref: id, expires_at: id, blocked: pathList, overlaps: z.array(Overlap), review_job: id.nullable().optional() });
 export const Claim = z.object({ lease: id, holder: id, parent: id, supersedes: id.nullable().optional(), intent: id, scope: pathList, state: z.enum(['active', 'submitted', 'expired', 'released']), expires_at: id });
 export const SubmitIn = z.object({ lease: id, commit: id });
 export const SubmitOut = z.object({ node: id, job: id });
