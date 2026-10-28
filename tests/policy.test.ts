@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import { Config } from '../src/config.js';
 import { normalized, summarize } from '../src/scoring.js';
 import { requirements, scopesOverlap } from '../src/policy.js';
+import { checkPush } from '../src/server/git.js';
 
 test('paired gain distinguishes improvement, regression and baseline noise',()=>{
   assert.equal(normalized(12,10,'max'),1.2);
@@ -27,8 +28,15 @@ test('paired gain distinguishes improvement, regression and baseline noise',()=>
   assert.throws(()=>normalized(0,10,'max'));
 });
 
+test('hook rejects runner pushes and foreign refs',()=>{
+  const line='0000000000000000000000000000000000000000 abc refs/heads/agents/a/l_1';
+  assert.throws(()=>checkPush('runner','runner',line));
+  assert.throws(()=>checkPush('b','agent',line));
+  assert.doesNotThrow(()=>checkPush('a','agent',line));
+});
+
 test('path rule requirements union across files and scope prefixes overlap',()=>{
-  const config=Config.parse({goal:{text:'goal'},tests:{cmd:'true'},metrics:[{name:'m',cmd:'echo 1',direction:'max',weight:1}],merge:{main:{require:['tests','review']},rules:[{paths:['docs/**'],require:['tests']},{paths:['src/auth/**'],require:['human']}]}});
+  const config=Config.parse({goal:{text:'goal'},tests:{cmd:'true'},metrics:[{name:'m',cmd:'echo 1',direction:'max',weight:1}],pinned:{paths:['fervo.toml']},merge:{main:{require:['tests','review']},rules:[{paths:['docs/**'],require:['tests']},{paths:['src/auth/**'],require:['human']}]}});
   assert.deepEqual([...requirements(config,['docs/readme.md'])],['tests']);
   assert.deepEqual([...requirements(config,['docs/readme.md','src/auth/login.ts'])],['tests','human']);
   assert.equal(scopesOverlap(['src/'],['src/auth/'],[]),true);

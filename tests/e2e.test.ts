@@ -62,6 +62,8 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
 
       const replay=await fetch(`${url}/claims`,{method:'POST',headers:{Authorization:`Bearer ${agent.token}`,'Idempotency-Key':'claim-1','Content-Type':'application/json'},body:JSON.stringify({parent:submitted.node,scope:['score.txt'],intent:'different'})});
       assert.equal(replay.status,400);assert.match(await replay.text(),/different request/);
+      const sameReplay=await fetch(`${url}/claims`,{method:'POST',headers:{Authorization:`Bearer ${agent.token}`,'Idempotency-Key':'claim-1','Content-Type':'application/json'},body:JSON.stringify({parent:'n_0',scope:['score.txt'],intent:'improve score'})});
+      assert.equal(sameReplay.status,200);assert.equal((await sameReplay.json() as {lease:string}).lease,claim.lease);
 
       const same=fervo(clone,'claim','--parent',submitted.node,'--scope','notes.txt','--intent','document without changing metric','--key','same-claim','--checkout');
       writeFileSync(join(clone,'notes.txt'),'notes\n');command(clone,'git','add','notes.txt');command(clone,'git','commit','-qm','add notes');
@@ -79,7 +81,7 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
       command(clone2,'git','config','user.email','agent2@example.com');command(clone2,'git','config','user.name','Agent Two');
       const firstClaim=fervo(clone,'claim','--parent',submitted.node,'--scope','score.txt','--intent','raise to 14','--key','parallel-1','--checkout');
       const secondClaim=fervo(clone2,'claim','--parent',submitted.node,'--scope','score.txt','--intent','raise to 13','--key','parallel-2','--checkout');
-      assert.equal(secondClaim.overlaps.length,1);
+      assert.ok(secondClaim.overlaps.some((entry:{kind:string;id:string})=>entry.kind==='claim'&&entry.id===firstClaim.lease));
       writeFileSync(join(clone,'score.txt'),'14\n');command(clone,'git','add','score.txt');command(clone,'git','commit','-qm','raise to 14');
       writeFileSync(join(clone2,'score.txt'),'13\n');command(clone2,'git','add','score.txt');command(clone2,'git','commit','-qm','raise to 13');
       const firstNode=fervo(clone,'submit','--lease',firstClaim.lease,'--key','parallel-submit-1').node;
@@ -92,6 +94,19 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
       const rebasedNode=fervo(clone2,'submit','--lease',rebased.lease,'--key','rebased-submit').node;
       for(let i=0;i<3;i++)await runRunner(url,runner.token,settings,model,true);
       assert.equal(fervo(clone2,'status',rebasedNode).state,'merged');
+      const leased=await fetch(`${url}/jobs/lease`,{method:'POST',headers:{Authorization:`Bearer ${runner.token}`,'Idempotency-Key':'lease-postmerge','Content-Type':'application/json'},body:'{"wait":0}'});
+      assert.equal(leased.status,200);const postmerge=await leased.json() as {id:string;kind:string};assert.equal(postmerge.kind,'postmerge');
+      const failed=await fetch(`${url}/jobs/${postmerge.id}/result`,{method:'POST',headers:{Authorization:`Bearer ${runner.token}`,'Idempotency-Key':'fail-postmerge','Content-Type':'application/json'},body:JSON.stringify({verdicts:[{producer:'tests',provider:null,passed:false,samples:null,evidence:'injected postmerge failure',recipe_hash:'test'}]})});
+      assert.equal(failed.status,200,await failed.text());
+      assert.equal(fervo(clone2,'status',rebasedNode).state,'reverted');
+      assert.equal(fervo(clone2,'context').main.node,firstNode);
+
+      const override=fervo(clone,'claim','--parent',firstNode,'--scope','notes.txt','--intent','add operator note','--key','override-claim','--checkout');
+      writeFileSync(join(clone,'notes.txt'),'operator note\n');command(clone,'git','add','notes.txt');command(clone,'git','commit','-qm','operator note');
+      const overrideNode=fervo(clone,'submit','--lease',override.lease,'--key','override-submit').node;
+      await runRunner(url,runner.token,settings,model,true);
+      assert.equal(fervo(clone,'status',overrideNode).outcome,'within_noise');
+      assert.equal(fervo(human,'merge',overrideNode,'--reason','approved docs change','--key','override-merge').state,'merged');
     } finally {server.kill();await new Promise<void>(resolve=>server.on('exit',()=>resolve()));}
   } finally {rmSync(tmp,{recursive:true,force:true});}
 });
