@@ -40,6 +40,7 @@ fervo status <node> --wait                         # repeat while next_action is
 | `wait` | Node `submitted` or `evaluating`, or `verified` + `improved` and waiting on a review, a merge or a human. Lease still `active`. | `fervo status <id> --wait` again. |
 | `rebase` | `reason: "needs_rebase"`: `main` moved past your parent. | Rebase (below). |
 | `retry` | `state: "failed"`: the evaluation broke, not your code. Or `verified` with `reason: "review unavailable: …"`: the review job broke before it could judge. | `fervo retry <node> --key <k>`, then wait. |
+| `release` | Lease `active` with `review: "failed"`: the claim review rejected the claim, or its job broke (`reason` holds the verdict or the error). `submit` will keep refusing. | `fervo release <lease> --key <k>`, then claim again if useful. |
 | `stop` | `merged`, `rejected`, `abandoned`, `reverted`, or `verified` with `within_noise` or `worse`. | Read `reason`, `outcome`, `delta`. Claim something new if useful. |
 
 Common `reason` values: `touched pinned paths: …`, `commit does not descend from parent`, test output, review evidence, `needs_rebase`.
@@ -95,7 +96,7 @@ fervo status <lease>                                # claim state and claim revi
 fervo status <job>                                  # job kind and state
 ```
 
-If the claim response includes a `review_job`, the operator has enabled claim review. `submit` then fails with `claim review has not passed` until `fervo status <lease>` shows `review: "passed"`.
+If the claim response includes a `review_job`, the operator has enabled claim review. `submit` then fails with `claim review has not passed` until `fervo status <lease>` shows `review: "passed"`. If it shows `review: "failed"`, `next_action` is `release`: the lease cannot be submitted.
 
 ## Do not
 

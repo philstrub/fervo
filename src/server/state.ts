@@ -47,9 +47,10 @@ export class State {
   status(id: string): object {
     if (id.startsWith('l_')) {
       const claim = this.one('SELECT * FROM claims WHERE id=?', id);
-      const reviewJob = this.db.prepare("SELECT id,state FROM jobs WHERE claim=? AND kind='claim_review' ORDER BY created_at DESC LIMIT 1").get(id) as Row | undefined;
-      const review = this.db.prepare("SELECT passed,evidence FROM verdicts WHERE claim=? AND producer='claim_review' ORDER BY created_at DESC LIMIT 1").get(id) as Row | undefined;
-      return { lease: id, state: claim.state, expires_at: claim.expires_at, review_job: reviewJob?.id ?? null, review: review ? (review.passed ? 'passed' : 'failed') : reviewJob ? 'pending' : null, reason: review?.evidence ?? null, next_action: claim.state === 'active' ? 'wait' : 'stop' };
+      const reviewJob = this.db.prepare("SELECT id,state,result FROM jobs WHERE claim=? AND kind='claim_review' ORDER BY created_at DESC LIMIT 1").get(id) as Row | undefined;
+      const verdict = this.db.prepare("SELECT passed,evidence FROM verdicts WHERE claim=? AND producer='claim_review' ORDER BY created_at DESC LIMIT 1").get(id) as Row | undefined;
+      const review = verdict ? (verdict.passed ? 'passed' : 'failed') : reviewJob?.state === 'failed' ? 'failed' : reviewJob ? 'pending' : null;
+      return { lease: id, state: claim.state, expires_at: claim.expires_at, review_job: reviewJob?.id ?? null, review, reason: verdict?.evidence ?? (reviewJob?.state === 'failed' ? JSON.parse(reviewJob.result).error : null), next_action: claim.state !== 'active' ? 'stop' : review === 'failed' ? 'release' : 'wait' };
     }
     if (id.startsWith('j_')) { const job = this.one('SELECT * FROM jobs WHERE id=?', id); return { id, kind: job.kind, node: job.node, claim: job.claim, state: job.state }; }
     const node = this.one('SELECT * FROM nodes WHERE id=?', id);
@@ -180,7 +181,7 @@ export class State {
     const job=this.db.prepare("SELECT * FROM jobs WHERE state='queued' OR (state='running' AND lease_until<?) ORDER BY created_at LIMIT 1").get(now()) as Row|undefined;
     if(!job)return null;
     if(job.attempts>=3){
-      this.db.prepare("UPDATE jobs SET state='failed',result='lease attempts exhausted' WHERE id=?").run(job.id);
+      this.db.prepare("UPDATE jobs SET state='failed',result=? WHERE id=?").run(json({verdicts:[],error:'lease attempts exhausted'}),job.id);
       if(job.node){
         if(job.kind==='postmerge'||job.kind==='review')this.db.prepare('UPDATE nodes SET reason=? WHERE id=?').run(`${job.kind} lease attempts exhausted`,job.node);
         else this.db.prepare("UPDATE nodes SET state='failed',reason='job lease attempts exhausted' WHERE id=?").run(job.node);

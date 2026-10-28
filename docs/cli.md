@@ -64,7 +64,7 @@ Run it from the lease's worktree. Refuses uncommitted tracked changes. Pushes HE
 
 - Node `state`: `submitted`, `evaluating`, `verified`, `merged`, `reverted`, `rejected`, `failed`, `abandoned`.
 - `outcome`: `improved`, `within_noise`, `worse`, or `null`.
-- `next_action`: `wait`, `rebase`, `retry`, `stop`. See the [Agent guide](agent-guide.md#next_action).
+- `next_action`: `wait`, `rebase`, `retry`, `release`, `stop`. See the [Agent guide](agent-guide.md#next_action).
 
 ### `retry <node> --key <k>`
 
@@ -107,7 +107,7 @@ These commands read the human token from `FERVO_TOKEN`, or prompt for it on the 
 | `uncommitted tracked changes: commit or stash before submit` | dirty working tree | commit |
 | `lease is not active for actor` | expired, released, already submitted, or not yours | claim again |
 | `claim cannot be renewed` / `claim cannot be released` | the claim is no longer active | nothing to do, or claim again |
-| `claim review has not passed` | claim review enabled and not yet passed | `fervo status <lease> --wait` |
+| `claim review has not passed` | claim review enabled and not yet passed | `fervo status <lease> --wait`; if `review` is `failed`, release and claim again |
 | `parent must be merged or verified` | the parent was rejected, failed or abandoned | pick a node from `context` |
 | `supersedes must name your node and current main parent` | wrong `--parent` or someone else's node | use `context.main.node` |
 | `only failed nodes or failed reviews can retry` | neither the node nor its review job failed | read `next_action` |
