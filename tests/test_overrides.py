@@ -58,3 +58,13 @@ def test_veto_sends_the_reason_and_prints_the_abandoned_node(workdir: Path, resp
     assert json.loads(result.stdout) == vetoed
     assert json.loads(route.calls.last.request.content) == {"reason": "changes the public API"}
     assert route.calls.last.request.headers["Idempotency-Key"] == "x0"
+
+
+def test_revert_sends_the_reason_and_prints_the_reverted_node(workdir: Path, respx_mock, fervo) -> None:
+    reverted = node_status("reverted", "held-out tests regress")
+    route = respx_mock.post(f"{API}/nodes/n_57/revert").respond(json=reverted)
+    result = fervo("revert", "n_57", "--reason", "held-out tests regress", "--key", "r0")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == reverted
+    assert json.loads(route.calls.last.request.content) == {"reason": "held-out tests regress"}
+    assert route.calls.last.request.headers["Idempotency-Key"] == "r0"
