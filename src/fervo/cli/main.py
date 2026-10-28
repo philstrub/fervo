@@ -38,9 +38,9 @@ from typing import Annotated
 
 import typer
 
-from fervo.cli.remote import Remote, emit, get
+from fervo.cli.remote import Remote, emit, get, load_remote
 from fervo.git import git
-from fervo.models import Whoami
+from fervo.models import Context, Whoami
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -71,3 +71,13 @@ def clone(
         str(directory),
     )
     emit({"path": str(directory.resolve()), "actor": whoami.actor, "branch_prefix": f"{prefix}/{whoami.actor.id}"})
+
+
+@app.command()
+def context(
+    scope: Annotated[list[str], typer.Option(help="Narrow claims and tried directions to those overlapping this path. Repeatable.")] = [],
+    summary: Annotated[bool, typer.Option(help="Also ask for the runner's prose briefing; pending on the first call.")] = False,
+) -> None:
+    """Goal, frontier, open claims, tried directions, rules and your updates."""
+    remote = load_remote(Path.cwd())
+    emit(Context.model_validate(get(remote, "/context", {"scope": scope, "summary": summary})))
