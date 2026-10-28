@@ -26,3 +26,11 @@ def test_actor_add_sends_the_actor_and_prints_the_token_once(workdir: Path, resp
 def test_actor_add_refuses_an_id_that_cannot_be_a_branch_name(workdir: Path, fervo) -> None:
     assert fervo("actor", "add", "Claude 1", "--kind", "agent", "--key", "a1").exit_code != 0
     assert fervo("actor", "add", "claude-1", "--kind", "robot", "--key", "a2").exit_code == 2
+
+
+def test_actor_list_prints_every_actor(workdir: Path, respx_mock, fervo) -> None:
+    actors = [actor("claude-1"), actor("filippo", "human"), actor("runner", "runner")]
+    respx_mock.get(f"{API}/actors").respond(json=actors)
+    result = fervo("actor", "list")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == actors
