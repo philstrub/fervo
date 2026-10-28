@@ -11,6 +11,10 @@ A shared runtime schema makes an API mismatch fail at the process boundary.
 The CLI validates server output; future server and runner code use the same schemas.
 ## 4. Key Concepts
 Claims reserve intent and scope; nodes identify submitted commits. Writes carry idempotency keys in HTTP headers.
+## 5. HTTP Surface
+GET /whoami, /context, and /status/:id are reads. Status accepts a bounded `wait` query in seconds.
+POST /claims, /submit, /baseline, /actors, and actor/claim/node action paths are writes.
+A new claim can name `supersedes` when the target moved; submit uses its new lease.
 */
 import { z } from 'zod';
 
@@ -30,7 +34,7 @@ export const SubmitOut = z.object({ node: id, job: id });
 export const NodeState = z.enum(['submitted', 'evaluating', 'verified', 'merged', 'reverted', 'rejected', 'failed', 'abandoned']);
 export const Outcome = z.enum(['improved', 'within_noise', 'worse']);
 export const NextAction = z.enum(['wait', 'rebase', 'retry', 'stop']);
-export const NodeStatus = z.object({ node: id, state: NodeState, outcome: Outcome.nullable(), delta: z.number().nullable(), interval: z.tuple([z.number(), z.number()]).nullable(), rank: z.number().int().nullable(), reason: z.string().nullable(), job: id.nullable(), next_action: NextAction.optional() });
+export const NodeStatus = z.object({ node: id, state: NodeState, outcome: Outcome.nullable(), delta: z.number().nullable(), interval: z.tuple([z.number(), z.number()]).nullable(), rank: z.number().int().nullable(), reason: z.string().nullable(), job: id.nullable(), next_action: NextAction });
 export const ClaimStatus = z.object({ lease: id, state: Claim.shape.state, expires_at: id, review_job: id.nullable(), review: z.enum(['pending', 'passed', 'failed']).nullable(), reason: z.string().nullable(), next_action: NextAction });
 export const Job = z.object({ id, kind: z.enum(['claim_review', 'eval', 'review', 'summary', 'postmerge', 'baseline']), node: id.nullable(), claim: id.nullable().optional(), state: z.enum(['queued', 'running', 'done', 'failed']) });
 export const Status = z.union([NodeStatus, ClaimStatus, Job]);

@@ -151,3 +151,43 @@ test('clone stores the token in Git config and a rebased claim links its old nod
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('operator writes preserve idempotency keys and return validated objects', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fervo-operator-'));
+  const calls: { path: string; key: string | undefined; body: unknown }[] = [];
+  const human = { ...actor, id: 'filippo', kind: 'human' };
+  const claim = { lease: 'l_1', holder: 'filippo', parent: 'n_0', intent: 'docs', scope: ['docs/'], state: 'released', expires_at: 'tomorrow' };
+  const verdict = { id: 'v_1', node: 'n_1', reviewer: 'filippo', producer: 'human', provider: null, passed: false, evidence: 'tests failed' };
+  const job = { id: 'j_2', kind: 'baseline', node: null, state: 'queued' };
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    const path = request.url!;
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : null;
+    calls.push({ path, key: request.headers['idempotency-key']?.toString(), body });
+    const value = path === '/actors' ? { actor: human, token: 'shown-once' } : path.endsWith('/disable') ? human : path.endsWith('/release') ? claim : path.endsWith('/verdicts') ? verdict : path === '/baseline' ? job : node;
+    response.end(JSON.stringify(value));
+  });
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  try {
+    git(root, 'init');
+    git(root, 'remote', 'add', 'origin', 'file:///unused');
+    git(root, 'config', 'fervo.url', `http://127.0.0.1:${(server.address() as { port: number }).port}`);
+    git(root, 'config', 'http.file:///unused.extraHeader', 'Authorization: Bearer secret');
+    assert.equal(JSON.parse((await cli(root, 'actor', 'add', 'filippo', '--kind', 'human', '--key', 'actor-1')).stdout).token, 'shown-once');
+    await cli(root, 'actor', 'disable', 'filippo', '--key', 'actor-2');
+    await cli(root, 'release', 'l_1', '--key', 'release-1');
+    await cli(root, 'review', 'n_1', '--fail', '--evidence', 'tests failed', '--key', 'review-1');
+    await cli(root, 'merge', 'n_1', '--reason', 'manual override', '--key', 'merge-1');
+    await cli(root, 'baseline', '--key', 'baseline-1');
+    assert.deepEqual(calls.map(call => [call.path, call.key]), [
+      ['/actors', 'actor-1'], ['/actors/filippo/disable', 'actor-2'], ['/claims/l_1/release', 'release-1'], ['/nodes/n_1/verdicts', 'review-1'], ['/nodes/n_1/merge', 'merge-1'], ['/baseline', 'baseline-1'],
+    ]);
+    assert.deepEqual(calls[0]?.body, { id: 'filippo', kind: 'human', provider: null, model: null, harness: null });
+    assert.deepEqual(calls[3]?.body, { passed: false, evidence: 'tests failed' });
+    assert.deepEqual(calls[4]?.body, { reason: 'manual override' });
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
