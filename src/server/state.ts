@@ -208,7 +208,11 @@ export class State {
           this.policy(job.node);
         }
       }else if(job.kind==='review')this.policy(job.node);
-      else if(job.kind==='postmerge'&&result.verdicts.find(v=>v.producer==='tests')?.passed===false)this.revert(job.node,'postmerge tests failed');
+      else if(job.kind==='postmerge'&&result.verdicts.find(v=>v.producer==='tests')?.passed===false){
+        const head=bareGit(this.repo,'rev-parse','refs/heads/main');
+        if(head===this.one('SELECT commit_sha FROM nodes WHERE id=?',job.node).commit_sha)this.revert(job.node,'postmerge tests failed');
+        else{this.db.prepare('UPDATE nodes SET reason=? WHERE id=?').run('postmerge tests failed; main has moved past this node, revert manually',job.node);this.event('system','postmerge_failed',job.node,{head});}
+      }
       this.event(actor.id,'node_state',job.node,{state:this.one('SELECT state FROM nodes WHERE id=?',job.node).state});
     }
     return this.status(id);
