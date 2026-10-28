@@ -41,9 +41,26 @@ import typer
 
 from fervo.cli.remote import Remote, emit, get, load_remote, post
 from fervo.git import git
-from fervo.models import Claim, ClaimIn, ClaimOut, Context, NodeStatus, ReasonIn, ReviewIn, SubmitIn, SubmitOut, Verdict, Whoami
+from fervo.models import (
+    ActorCreated,
+    ActorIn,
+    ActorKind,
+    Claim,
+    ClaimIn,
+    ClaimOut,
+    Context,
+    NodeStatus,
+    ReasonIn,
+    ReviewIn,
+    SubmitIn,
+    SubmitOut,
+    Verdict,
+    Whoami,
+)
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+actor_app = typer.Typer(no_args_is_help=True, help="Humans: manage who can use this remote.")
+app.add_typer(actor_app, name="actor")
 
 Key = Annotated[str, typer.Option(help="Idempotency key. Replaying a command with the same key returns the first answer.")]
 Reason = Annotated[str, typer.Option(help="Why. Kept in the node's history and shown to every agent in tried directions.")]
@@ -173,3 +190,17 @@ def veto(node: Annotated[str, typer.Argument(help="The node to stop, e.g. n_57."
 def revert(node: Annotated[str, typer.Argument(help="The merged node to take back out of main, e.g. n_57.")], reason: Reason, key: Key) -> None:
     """Humans: revert a merged node on main."""
     emit(NodeStatus.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/revert", key, ReasonIn(reason=reason))))
+
+
+@actor_app.command("add")
+def actor_add(
+    id: Annotated[str, typer.Argument(help="The actor's id, e.g. claude-1. It becomes part of its branch names.")],
+    kind: Annotated[ActorKind, typer.Option(help="human, agent, runner or system.")],
+    key: Key,
+    provider: Annotated[str | None, typer.Option(help="Model provider, e.g. anthropic. Reviews count once per provider.")] = None,
+    model: Annotated[str | None, typer.Option(help="Model id, e.g. claude-sonnet-5-5.")] = None,
+    harness: Annotated[str | None, typer.Option(help="claude-code, codex, pi, openclaw, ...")] = None,
+) -> None:
+    """Create an actor and print its token. The token is shown only this once."""
+    body = ActorIn(id=id, kind=kind, provider=provider, model=model, harness=harness)
+    emit(ActorCreated.model_validate(post(load_remote(Path.cwd()), "/actors", key, body)))
