@@ -42,6 +42,7 @@ export function createFervoServer(root: string) {
       const hash = createHash('sha256').update(auth.slice(7)).digest('hex');
       const actor = db.prepare('SELECT * FROM actors WHERE token_hash=? AND disabled=0').get(hash) as Record<string, any> | undefined;
       if (!actor) { send(res,401,{error:'invalid or disabled token'}); return; }
+      db.transaction(()=>state.expire())();
       const url = new URL(req.url!, `http://${req.headers.host}`);
       if (url.pathname.startsWith('/git/')) { await gitHttp(req,res,root,actor.id,actor.kind); return; }
       if (req.method === 'GET') {
@@ -56,6 +57,13 @@ export function createFervoServer(root: string) {
         if(typeof key!=='string'||!key)throw new Error('Idempotency-Key required');
         const input=await body(req);
         const digest=createHash('sha256').update(req.method+url.pathname+JSON.stringify(input)).digest('hex');
+        if(url.pathname==='/jobs/lease' && !db.prepare('SELECT 1 FROM idempotency WHERE actor=? AND key=?').get(actor.id,key)) {
+          if(actor.kind!=='runner')throw new Error('runner token required');
+          const wait=Number((input as {wait?:number}).wait ?? 30);
+          if(!Number.isInteger(wait)||wait<0||wait>30)throw new Error('job wait must be 0 through 30 seconds');
+          const deadline=Date.now()+wait*1000;
+          while(Date.now()<deadline&&!db.prepare("SELECT 1 FROM jobs WHERE state='queued' OR (state='running' AND lease_until<?) LIMIT 1").get(new Date().toISOString()))await new Promise(resolve=>setTimeout(resolve,200));
+        }
         const output=db.transaction(()=>{
           const replay=db.prepare('SELECT * FROM idempotency WHERE actor=? AND key=?').get(actor.id,key) as {request_hash:string;response:string}|undefined;
           if(replay){if(replay.request_hash!==digest)throw new Error('idempotency key reused with a different request');return JSON.parse(replay.response);}
