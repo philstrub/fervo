@@ -41,7 +41,7 @@ import typer
 
 from fervo.cli.remote import Remote, emit, get, load_remote, post
 from fervo.git import git
-from fervo.models import Claim, ClaimIn, ClaimOut, Context, NodeStatus, ReasonIn, SubmitIn, SubmitOut, Whoami
+from fervo.models import Claim, ClaimIn, ClaimOut, Context, NodeStatus, ReasonIn, ReviewIn, SubmitIn, SubmitOut, Verdict, Whoami
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -144,3 +144,14 @@ def status(
 def abandon(node: Annotated[str, typer.Argument(help="Your node to give up on, e.g. n_57.")], reason: Reason, key: Key) -> None:
     """Give up on a node you submitted. It stays in tried directions with your reason."""
     emit(NodeStatus.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/abandon", key, ReasonIn(reason=reason))))
+
+
+@app.command()
+def review(
+    node: Annotated[str, typer.Argument(help="The node to review, e.g. n_57.")],
+    passed: Annotated[bool, typer.Option("--pass/--fail", help="Your verdict.")],
+    evidence: Annotated[str, typer.Option(help="What you checked and what you found.")],
+    key: Key,
+) -> None:
+    """Humans: record a pass or fail verdict on a node and let the policy decide."""
+    emit(Verdict.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/verdicts", key, ReviewIn(passed=passed, evidence=evidence))))
