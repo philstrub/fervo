@@ -44,7 +44,7 @@ cli.command('init').description('Initialize a managed bare repository and first 
     const at=new Date().toISOString();
     db.prepare('INSERT INTO actors(id,kind,provider,model,harness,token_hash,created_at) VALUES(?,?,?,?,?,?,?)').run(options.actor,'human',null,null,null,createHash('sha256').update(token).digest('hex'),at);
     const commit=git(root,'--git-dir',resolve(root,'repo.git'),'rev-parse','refs/heads/main');
-    db.prepare('INSERT INTO nodes(id,commit_sha,parent_node,claim,author,intent,scope,changed_paths,state,merged_as,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('n_0',commit,null,null,options.actor,'baseline','[]','[]','merged',commit,at);
+    db.prepare('INSERT INTO nodes(id,commit_sha,parent_node,claim,author,intent,scope,changed_paths,state,score_mean,score_lo,score_hi,merged_as,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('n_0',commit,null,null,options.actor,'baseline','[]','[]','merged',1,1,1,commit,at);
     db.prepare('INSERT INTO events(at,actor,type,subject,data) VALUES(?,?,?,?,?)').run(at,options.actor,'initialized','n_0','{}');
     db.prepare('INSERT INTO jobs(id,kind,node,claim,payload,state,created_at) VALUES(?,?,?,?,?,?,?)').run(`j_${randomBytes(5).toString('hex')}`,'baseline',null,null,'{}','queued',at);
     db.close();
@@ -71,9 +71,13 @@ cli.command('runner').description('Lease and evaluate jobs on the operator machi
   .requiredOption('--judge-template <file>').requiredOption('--review-template <file>')
   .requiredOption('--anthropic-model <id>').requiredOption('--openai-model <id>')
   .requiredOption('--review-provider <provider>').requiredOption('--review-model <id>')
+  .option('--concurrency <count>','parallel job workers','2')
   .option('--once','process one available job and exit')
-  .action(async (options:{remote:string;token:string;judgeTemplate:string;reviewTemplate:string;anthropicModel:string;openaiModel:string;reviewProvider:string;reviewModel:string;once?:boolean})=>{
-    await runRunner(options.remote,options.token,readSettings(options),undefined,Boolean(options.once));
+  .action(async (options:{remote:string;token:string;judgeTemplate:string;reviewTemplate:string;anthropicModel:string;openaiModel:string;reviewProvider:string;reviewModel:string;concurrency:string;once?:boolean})=>{
+    const count=Number(options.concurrency);
+    if(!Number.isInteger(count)||count<1)throw new Error('--concurrency must be a positive integer');
+    const settings=readSettings(options);
+    await Promise.all(Array.from({length:count},()=>runRunner(options.remote,options.token,settings,undefined,Boolean(options.once))));
   });
 
 cli.command('clone').description('Clone a Fervo repo and store this actor\'s token in Git config')
@@ -90,11 +94,9 @@ cli.command('clone').description('Clone a Fervo repo and store this actor\'s tok
 
 cli.command('context').description('Read the goal, frontier, claims, tried directions, and rules')
   .option('--scope <path>', 'filter overlapping claims and tried directions', collect, [])
-  .option('--summary', 'include a runner-authored briefing')
-  .action(async (options: { scope: string[]; summary?: boolean }) => {
+  .action(async (options: { scope: string[] }) => {
     const params = new URLSearchParams();
     for (const scope of options.scope) params.append('scope', scope);
-    if (options.summary) params.set('summary', 'true');
     emit(await request(loadRemote(cwd()), 'GET', '/context', Context, { params }));
   });
 
@@ -116,6 +118,10 @@ cli.command('claim').description('Declare intent and scope before editing')
 cli.command('release').description('Release an unsubmitted claim')
   .argument('<lease>').requiredOption('--key <key>')
   .action(async (lease: string, options: { key: string }) => emit(await request(loadRemote(cwd()), 'POST', `/claims/${encodeURIComponent(lease)}/release`, Claim, { key: options.key })));
+
+cli.command('renew').description('Extend an active claim lease')
+  .argument('<lease>').requiredOption('--key <key>')
+  .action(async (lease: string, options: { key: string }) => emit(await request(loadRemote(cwd()), 'POST', `/claims/${encodeURIComponent(lease)}/renew`, Claim, { key: options.key })));
 
 cli.command('submit').description('Push HEAD under the lease and submit it for evaluation')
   .requiredOption('--lease <lease>').requiredOption('--key <key>')
@@ -147,6 +153,10 @@ for (const action of ['abandon', 'merge', 'veto', 'revert'] as const) {
       emit(await request(loadRemote(cwd()), 'POST', `/nodes/${encodeURIComponent(node)}/${action}`, NodeStatus, { key: options.key, body: ReasonIn.parse({ reason: options.reason }) }));
     });
 }
+
+cli.command('retry').description('Requeue evaluation of a failed node')
+  .argument('<node>').requiredOption('--key <key>')
+  .action(async (node:string,options:{key:string})=>emit(await request(loadRemote(cwd()),'POST',`/nodes/${encodeURIComponent(node)}/retry`,NodeStatus,{key:options.key})));
 
 cli.command('review').description('Human verdict on a node')
   .argument('<node>').option('--pass').option('--fail').requiredOption('--evidence <text>').requiredOption('--key <key>')
