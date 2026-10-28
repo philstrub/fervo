@@ -34,3 +34,12 @@ def test_actor_list_prints_every_actor(workdir: Path, respx_mock, fervo) -> None
     result = fervo("actor", "list")
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == actors
+
+
+def test_actor_disable_posts_with_the_key_and_prints_the_actor(workdir: Path, respx_mock, fervo) -> None:
+    disabled = actor("codex-1") | {"disabled": True}
+    route = respx_mock.post(f"{API}/actors/codex-1/disable").respond(json=disabled)
+    result = fervo("actor", "disable", "codex-1", "--key", "d0")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == disabled
+    assert route.calls.last.request.headers["Idempotency-Key"] == "d0"
