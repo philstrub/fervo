@@ -145,9 +145,7 @@ export class State {
       bareGit(this.repo,'update-ref',`refs/fervo/nodes/${id}`,body.commit);
       this.db.prepare("UPDATE claims SET state='submitted' WHERE id=?").run(claim.id);
       this.event(actor.id,'node_submitted',id,{state,reason,paths});
-      const job=state==='submitted'?this.job('eval',id,null):this.job('review',id,null);
-      if(state==='rejected') this.db.prepare("UPDATE jobs SET state='done' WHERE id=?").run(job);
-      return {node:id,job};
+      return {node:id,job:state==='submitted'?this.job('eval',id,null):null};
     }
     const release=/^\/claims\/(l_[^/]+)\/release$/.exec(path);
     if(release){const c=this.one('SELECT * FROM claims WHERE id=?',release[1]);if(c.holder!==actor.id||c.state!=='active')throw new Error('claim cannot be released');this.db.prepare("UPDATE claims SET state='released' WHERE id=?").run(c.id);this.event(actor.id,'claim_released',c.id);return {lease:c.id,holder:c.holder,parent:c.parent_node,supersedes:c.supersedes,intent:c.intent,scope:JSON.parse(c.scope),state:'released',expires_at:c.expires_at};}
