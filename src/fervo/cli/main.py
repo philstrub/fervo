@@ -40,7 +40,7 @@ import typer
 
 from fervo.cli.remote import Remote, emit, get, load_remote, post
 from fervo.git import git
-from fervo.models import ClaimIn, ClaimOut, Context, Whoami
+from fervo.models import Claim, ClaimIn, ClaimOut, Context, Whoami
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -100,3 +100,9 @@ def claim(
         git(cwd, "fetch", "--quiet", "origin", out.parent_ref)
         git(cwd, "checkout", "--quiet", "-b", f"{git(cwd, 'config', '--get', 'fervo.prefix')}/{out.lease}", "FETCH_HEAD")
     emit(out)
+
+
+@app.command()
+def release(lease: Annotated[str, typer.Argument(help="The lease to give up, e.g. l_9.")], key: Key) -> None:
+    """Give up a claim you will not submit, so its scope stops showing as taken."""
+    emit(Claim.model_validate(post(load_remote(Path.cwd()), f"/claims/{lease}/release", key)))
