@@ -48,3 +48,13 @@ def test_merge_sends_the_reason_and_prints_the_merged_node(workdir: Path, respx_
     assert json.loads(result.stdout) == merged
     assert json.loads(route.calls.last.request.content) == {"reason": "demo deadline; reviewed by hand"}
     assert route.calls.last.request.headers["Idempotency-Key"] == "m0"
+
+
+def test_veto_sends_the_reason_and_prints_the_abandoned_node(workdir: Path, respx_mock, fervo) -> None:
+    vetoed = node_status("abandoned", "changes the public API")
+    route = respx_mock.post(f"{API}/nodes/n_57/veto").respond(json=vetoed)
+    result = fervo("veto", "n_57", "--reason", "changes the public API", "--key", "x0")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == vetoed
+    assert json.loads(route.calls.last.request.content) == {"reason": "changes the public API"}
+    assert route.calls.last.request.headers["Idempotency-Key"] == "x0"
