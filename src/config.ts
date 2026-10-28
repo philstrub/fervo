@@ -22,12 +22,13 @@ export const Config = z.object({
   tests: command,
   metrics: z.array(z.object({ name: z.string().min(1), cmd: z.string().min(1), direction: z.enum(['max', 'min']), weight: z.number().positive(), timeout: z.string().default('10m') })).min(1),
   judge: z.object({ template: z.string().min(1), weight: z.number().min(0).max(1) }).optional(),
-  eval: z.object({ samples: z.number().int().positive().default(3), baseline_samples: z.number().int().positive().default(5) }).default({ samples: 3, baseline_samples: 5 }),
+  eval: z.object({ samples: z.number().int().min(2).default(3), baseline_samples: z.number().int().min(2).default(5) }).default({ samples: 3, baseline_samples: 5 }),
   context: z.object({ tried_ttl: z.string().default('7d') }).default({ tried_ttl: '7d' }),
   pinned: z.object({ paths: z.array(z.string()).default([]) }).default({ paths: [] }),
   merge: z.object({ main: z.object({ mode: z.literal('verify_then_merge').default('verify_then_merge'), require: z.array(z.enum(['tests', 'frontier_gain', 'review', 'human'])).default(['tests', 'frontier_gain', 'review']), human_override: z.boolean().default(true) }), rules: z.array(z.object({ paths: z.array(z.string()).min(1), require: z.array(z.enum(['tests', 'frontier_gain', 'review', 'human'])) })).default([]) }),
   review: z.object({ profile: z.literal('basic').default('basic'), model: z.string().min(1) }).optional(),
-});
+  claim_review: z.object({ enabled: z.boolean() }).optional(),
+}).refine(config => config.pinned.paths.includes('fervo.toml'), 'pinned.paths must include fervo.toml');
 export type Config = z.output<typeof Config>;
 
 export function mainConfig(repo: string): Config {
