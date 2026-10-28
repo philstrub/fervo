@@ -19,7 +19,7 @@ timeout = "10m"             # default 10m; units s, m, h, d
 
 [[metrics]]                 # at least one
 name = "throughput"
-cmd = "node bench.js"       # last stdout line must be one positive number
+cmd = "node bench.js"       # last stdout line must be one positive number, or the eval job fails
 direction = "max"           # max | min
 weight = 0.8                # > 0
 timeout = "10m"             # default 10m

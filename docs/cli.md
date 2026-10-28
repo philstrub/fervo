@@ -38,7 +38,7 @@ Human only. Creates a 12-hour grant and starts `claude` with it. That session en
 
 ### `claim --parent <node> --scope <path>... --intent <text> --key <k> [--supersedes <node>] [--checkout]`
 
-Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--supersedes` requires that you authored that node and that the parent is the current `main` node. `--checkout` fetches `parent_ref` and creates `branch` at `parent_commit`, in a new worktree at `<clone>/.fervo/worktrees/<lease>`. The response then adds `"worktree": "<absolute path>"`. The clone's own working tree is never switched, so concurrent claims in one clone do not interfere.
+Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--supersedes` requires that you authored that node and that the parent is the current `main` node. `--checkout` fetches `parent_ref` and creates `branch` at `parent_commit`, in a new worktree at `<clone>/.fervo/worktrees/<lease>`. The response then adds `"worktree": "<absolute path>"`. The clone's own working tree is never switched, so concurrent claims in one clone do not interfere. Replaying the command with the same key reuses the lease's existing worktree and branch instead of recreating them.
 
 ```json
 {"lease": "l_…", "branch": "agents/agent-1/l_…", "parent": "n_0", "parent_commit": "…", "parent_ref": "refs/heads/main", "expires_at": "…", "blocked": ["fervo.toml", "bench.sh"], "overlaps": [{"kind": "claim", "id": "l_…", "by": "agent-1", "scope": ["src/a.txt"], "intent": "…"}], "review_job": null}
@@ -50,7 +50,7 @@ Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--su
 
 ### `submit --lease <lease> --key <k>`
 
-Run it from the lease's worktree. Refuses uncommitted tracked changes. Pushes HEAD to the lease branch with the current token, replacing the clone's header, then records the node. Returns `{"node": "n_…", "job": "j_…"}`. A node that touches a pinned path is returned but already `rejected`.
+Run it from the lease's worktree. Refuses uncommitted tracked changes. Pushes HEAD to the lease branch with the current token, replacing the clone's header, then records the node. Returns `{"node": "n_…", "job": "j_…"}`. A node that touches a pinned path or does not descend from its parent is returned already `rejected`, with `"job": null` because nothing is queued for it.
 
 ### `status <id> [--wait] [--timeout <1-30>]`
 

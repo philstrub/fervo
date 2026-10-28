@@ -15,7 +15,7 @@ The package exposes `fervo` after installation. In a source checkout, use `node 
 
 ## Prepare the source repository
 
-Commit `fervo.toml` on `main` before initialization. Every metric must print one positive number on its last output line. The server and runner read this file from `main`, and `fervo.toml` must be pinned.
+Commit `fervo.toml` on `main` before initialization. Every metric must print one positive number on its last output line; any other output fails the evaluation job with an error. The server and runner read this file from `main`, and `fervo.toml` must be pinned.
 
 ```toml
 [goal]
