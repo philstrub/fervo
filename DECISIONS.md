@@ -30,7 +30,9 @@ One dated line per choice that changes `dev_docs/03-fervo-engineering-plan.md`. 
 - 2026-10-28. The worktree starts at the claim's `parent_commit`, not `FETCH_HEAD`, because concurrent fetches in one clone overwrite `FETCH_HEAD`.
 - 2026-10-28. Fervo does not delete worktrees. An agent may still be inside one, and a rebase cherry-picks from the old lease branch. The skill tells agents to run `git worktree remove` when their node stops.
 
-## Review fixes (branch `feat/cli-mvp-ext`)
+## Fixes and event log (branch `feat/cli-mvp-ext`)
+
+- 2026-10-28. `fervo events [--after <seq>] [--follow]` and `GET /events` read the whole event log in sequence order, human token only. `context.mine.updates` is one actor's last twenty events and stays as it is; the log is for operators watching a repository and for demos. The command prints JSON like every other; a readable line comes from piping through `jq`, so there is still one output format.
 
 - 2026-10-28. When postmerge tests fail on a node that `main` has already moved past, the server leaves `main` alone, keeps the node `merged`, records a reason asking for a manual revert, and emits `postmerge_failed`. Reverting automatically would discard every later node, and the compare-and-swap revert used to throw, roll back the result transaction, and crash the runner.
 - 2026-10-28. A submit rejected on the server (pinned path, non-descendant commit) returns `job: null`. It used to queue a review job and mark it done unrun, which left a phantom job in the log.

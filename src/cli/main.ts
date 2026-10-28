@@ -34,7 +34,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { z } from 'zod';
 import { git } from '../git.js';
 import { cloneRemote, emit, loadRemote, request } from '../remote.js';
-import { Actor, ActorCreated, ActorIn, EnrollerIn, EnrollIn, Grant, Claim, ClaimIn, ClaimOut, Context, Job, NodeStatus, ReasonIn, ReviewIn, Status, SubmitIn, SubmitOut, Verdict, Whoami } from '../models.js';
+import { Actor, ActorCreated, ActorIn, EnrollerIn, EnrollIn, Event, Grant, Claim, ClaimIn, ClaimOut, Context, Job, NodeStatus, ReasonIn, ReviewIn, Status, SubmitIn, SubmitOut, Verdict, Whoami } from '../models.js';
 import { mainConfig } from '../config.js';
 import { openDb } from '../store/db.js';
 import { createFervoServer } from '../server/http.js';
@@ -244,6 +244,18 @@ actor.command('add').argument('<id>').requiredOption('--kind <kind>').requiredOp
 actor.command('list').action(async () => emit(await request(humanRemote(cwd()), 'GET', '/actors', z.array(Actor))));
 actor.command('disable').argument('<id>').requiredOption('--key <key>')
   .action(async (id: string, options: { key: string }) => emit(await request(humanRemote(cwd()), 'POST', `/actors/${encodeURIComponent(id)}/disable`, Actor, { key: options.key })));
+
+cli.command('events').description('Read the event log as JSON lines; --follow keeps polling')
+  .option('--after <seq>', 'start after this sequence number', '0').option('--follow', 'poll for new events every second')
+  .action(async (options: { after: string; follow?: boolean }) => {
+    let after = Number(options.after);
+    if (!Number.isInteger(after) || after < 0) throw new Error('--after must be a non-negative integer');
+    const remote = humanRemote(cwd());
+    do {
+      for (const event of await request(remote, 'GET', '/events', z.array(Event), { params: new URLSearchParams({ after: String(after) }) })) { emit(event); after = event.seq; }
+      if (options.follow) await new Promise(resolve => setTimeout(resolve, 1000));
+    } while (options.follow);
+  });
 
 cli.command('baseline').description('Re-measure main for a new scoring epoch').requiredOption('--key <key>')
   .action(async (options: { key: string }) => emit(await request(humanRemote(cwd()), 'POST', '/baseline', Job, { key: options.key })));

@@ -88,6 +88,7 @@ These commands read the human token from `FERVO_TOKEN`, or prompt for it on the 
 | `actor list` | Lists all actors. |
 | `actor disable <id> --key <k>` | Revokes the token. |
 | `baseline --key <k>` | Queues a re-measurement of `main`. Returns the job. |
+| `events [--after <seq>] [--follow]` | Prints the event log after `seq` (default 0), one JSON object per event in sequence order: `{seq, at, actor, type, subject, data}`. `--follow` polls every second and keeps printing from the last sequence seen. |
 
 ## Operator processes
 

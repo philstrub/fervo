@@ -12,7 +12,7 @@ The CLI validates server output; future server and runner code use the same sche
 ## 4. Key Concepts
 Claims reserve intent and scope; nodes identify submitted commits. Writes carry idempotency keys in HTTP headers.
 ## 5. HTTP Surface
-GET /whoami, /context, and /status/:id are reads. Status accepts a bounded `wait` query in seconds.
+GET /whoami, /context, /status/:id, and /events (human only, `after` sequence query) are reads. Status accepts a bounded `wait` query in seconds.
 POST /claims, /submit, /baseline, /actors, and actor/claim/node action paths are writes.
 A new claim can name `supersedes` when the target moved; submit uses its new lease.
 ## 6. Enrollment
@@ -59,6 +59,7 @@ export const ClaimEntry = z.object({ lease: id, by: id, scope: pathList, intent:
 export const TriedEntry = z.object({ node: id, intent: id, scope: pathList.optional(), state: NodeState.optional(), outcome: Outcome.nullable(), reason: z.string().nullable().optional(), at: id.optional() });
 export const Rules = z.object({ pinned: pathList, requirements_by_path: z.record(z.string(), pathList) });
 export const Update = z.object({ subject: id, event: id, at: id });
+export const Event = z.object({ seq: z.number().int(), at: id, actor: id, type: id, subject: id, data: z.record(z.string(), z.unknown()) });
 export const Mine = z.object({ leases: z.array(ClaimEntry), updates: z.array(Update) });
 export const Summary = z.object({ status: z.enum(['pending', 'ready']), text: z.string().nullable(), job: id.nullable() });
 export const Context = z.object({ goal: z.string(), metrics: z.array(Metric), main: MainHead, frontier: z.array(FrontierEntry), claims: z.array(ClaimEntry), tried: z.array(TriedEntry), rules: Rules, mine: Mine, frontier_version: z.number().int(), summary: Summary.nullable().optional() });

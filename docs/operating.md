@@ -88,6 +88,11 @@ fervo baseline --key <k>                           # re-measure main, e.g. after
 - `fervo context` from any clone shows the frontier, active claims and recent outcomes.
 - `fervo status <node|lease|job>` shows a single object.
 - The server and runner write their logs to stderr.
+- `fervo events --follow` from a human clone tails every recorded event: claims with their overlaps, submits with rejection reasons, runner leases and verdicts, merges and reverts. One readable line per event, with `jq`:
+
+```sh
+fervo events --follow | jq -r '"\(.at[11:19])  \(.actor)  \(.type)  \(.subject)  \(.data | tostring)"'
+```
 
 ## Back up and reset
 
