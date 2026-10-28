@@ -1,0 +1,153 @@
+/**
+# CLI Contract Tests
+
+Executable checks for the agent-facing JSON and Git workflow.
+
+## 1. What This Module Does
+Runs the built CLI against a local HTTP server and a real temporary Git repo.
+## 2. Why This Module Exists
+Command flags, response validation, headers, and push behavior can drift independently.
+## 3. How It Fits in the Architecture
+These tests cover the CLI boundary while the state-writing server is developed separately.
+## 4. Key Concepts
+A write is retryable by key; a rejected policy result is ordinary JSON; submit pushes before posting its commit.
+*/
+import assert from 'node:assert/strict';
+import { spawnSync, execFile } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { test } from 'node:test';
+import { promisify } from 'node:util';
+
+const exec = promisify(execFile);
+const binary = resolve('dist/src/cli/main.js');
+const actor = { id: 'codex-1', kind: 'agent', provider: 'openai', model: 'codex', harness: 'codex', disabled: false };
+const context = { goal: 'Improve parser', metrics: [], main: { commit: 'abc', node: 'n_0' }, frontier: [], claims: [], tried: [], rules: { pinned: ['bench/**'], requirements_by_path: { '*': ['tests'] } }, mine: { leases: [], updates: [] }, frontier_version: 1 };
+const node = { node: 'n_1', state: 'rejected', outcome: null, delta: null, interval: null, rank: null, reason: 'pinned path', job: null, next_action: 'stop' };
+
+function git(cwd: string, ...args: string[]): string {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+}
+
+async function cli(cwd: string, ...args: string[]) {
+  return exec(process.execPath, [binary, ...args], { cwd, encoding: 'utf8' });
+}
+
+test('context, claim, status wait and submit use compact JSON and the required key', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fervo-cli-'));
+  const calls: { method: string; path: string; key: string | null; auth: string | undefined; body: unknown }[] = [];
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    const path = new URL(request.url!, 'http://localhost');
+    calls.push({ method: request.method!, path: path.pathname + path.search, key: request.headers['idempotency-key']?.toString() ?? null, auth: request.headers.authorization, body: chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : null });
+    const result = path.pathname === '/context' ? context : path.pathname === '/claims' ? { lease: 'l_1', parent: 'n_0', parent_commit: 'abc', parent_ref: 'refs/fervo/nodes/n_0', expires_at: 'tomorrow', blocked: [], overlaps: [] } : path.pathname === '/submit' ? { node: 'n_1', job: 'j_1' } : node;
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify(result));
+  });
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  const port = (server.address() as { port: number }).port;
+  const url = `http://127.0.0.1:${port}`;
+  const bare = join(root, 'repo.git');
+  const work = join(root, 'work');
+  try {
+    git(root, 'init', '--bare', bare);
+    git(root, 'init', work);
+    git(work, 'config', 'user.email', 'test@example.com');
+    git(work, 'config', 'user.name', 'Tester');
+    git(work, 'commit', '--allow-empty', '-m', 'initial');
+    git(work, 'remote', 'add', 'origin', bare);
+    git(work, 'config', 'fervo.url', url);
+    git(work, 'config', 'fervo.prefix', 'agents/codex-1');
+    git(work, 'config', `http.${bare}.extraHeader`, 'Authorization: Bearer secret');
+    const contextResult = await cli(work, 'context', '--scope', 'src/');
+    assert.deepEqual(JSON.parse(contextResult.stdout), context);
+    assert.equal(contextResult.stdout.split('\n').length, 2);
+    const claimResult = await cli(work, 'claim', '--parent', 'n_0', '--scope', 'src/', '--intent', 'speed up parsing', '--key', 'claim-1');
+    assert.equal(JSON.parse(claimResult.stdout).lease, 'l_1');
+    const statusResult = await cli(work, 'status', 'n_1', '--wait', '--timeout', '12');
+    assert.deepEqual(JSON.parse(statusResult.stdout), node);
+    const submitResult = await cli(work, 'submit', '--lease', 'l_1', '--key', 'submit-1');
+    assert.deepEqual(JSON.parse(submitResult.stdout), { node: 'n_1', job: 'j_1' });
+    assert.equal(git(bare, 'rev-parse', 'refs/heads/agents/codex-1/l_1'), git(work, 'rev-parse', 'HEAD'));
+    assert.deepEqual(calls.map(call => [call.method, call.path, call.key]), [
+      ['GET', '/context?scope=src%2F', null], ['POST', '/claims', 'claim-1'], ['GET', '/status/n_1?wait=12', null], ['POST', '/submit', 'submit-1'],
+    ]);
+    assert.ok(calls.every(call => call.auth === 'Bearer secret'));
+    assert.deepEqual(calls[1]?.body, { parent: 'n_0', scope: ['src/'], intent: 'speed up parsing' });
+    assert.deepEqual(calls[3]?.body, { lease: 'l_1', commit: git(work, 'rev-parse', 'HEAD') });
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('missing key and malformed API response exit with diagnostics on stderr', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fervo-cli-'));
+  const server = createServer((_request, response) => response.end('{}'));
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  try {
+    git(root, 'init');
+    git(root, 'remote', 'add', 'origin', 'file:///unused');
+    git(root, 'config', 'fervo.url', url);
+    git(root, 'config', 'http.file:///unused.extraHeader', 'Authorization: Bearer secret');
+    await assert.rejects(cli(root, 'claim', '--parent', 'n_0', '--scope', 'src/', '--intent', 'work'), error => {
+      const failed = error as { stdout: string; stderr: string };
+      assert.equal(failed.stdout, '');
+      assert.match(failed.stderr, /required option '--key <key>'/);
+      return true;
+    });
+    await assert.rejects(cli(root, 'context'), error => {
+      const failed = error as { stdout: string; stderr: string };
+      assert.equal(failed.stdout, '');
+      assert.match(failed.stderr, /goal/);
+      return true;
+    });
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('clone stores the token in Git config and a rebased claim links its old node', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fervo-clone-'));
+  const bare = join(root, 'repo.git');
+  const seed = join(root, 'seed');
+  const clone = join(root, 'clone');
+  const calls: unknown[] = [];
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    if (request.url === '/whoami') response.end(JSON.stringify({ actor, git_url: bare }));
+    else {
+      calls.push(JSON.parse(Buffer.concat(chunks).toString()));
+      response.end(JSON.stringify({ lease: 'l_2', parent: 'n_1', parent_commit: 'abc', parent_ref: 'refs/fervo/nodes/n_1', expires_at: 'tomorrow', blocked: [], overlaps: [] }));
+    }
+  });
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  try {
+    git(root, 'init', '--bare', bare);
+    git(root, 'init', seed);
+    git(seed, 'config', 'user.email', 'test@example.com');
+    git(seed, 'config', 'user.name', 'Tester');
+    git(seed, 'commit', '--allow-empty', '-m', 'initial');
+    git(seed, 'remote', 'add', 'origin', bare);
+    git(seed, 'push', 'origin', 'HEAD:main');
+    git(bare, 'symbolic-ref', 'HEAD', 'refs/heads/main');
+    const result = await cli(root, 'clone', url, clone, '--token', 'secret');
+    assert.equal(JSON.parse(result.stdout).branch_prefix, 'agents/codex-1');
+    assert.equal(git(clone, 'config', '--get', 'fervo.url'), url);
+    assert.equal(git(clone, 'config', '--get', `http.${bare}.extraHeader`), 'Authorization: Bearer secret');
+    await cli(clone, 'claim', '--parent', 'n_1', '--supersedes', 'n_0', '--scope', 'src/', '--intent', 'rebase', '--key', 'new-lease');
+    assert.deepEqual(calls, [{ parent: 'n_1', supersedes: 'n_0', scope: ['src/'], intent: 'rebase' }]);
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

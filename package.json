@@ -10,11 +10,11 @@
     "fervo": "dist/src/cli/main.js"
   },
   "files": [
-    "dist",
+    "dist/src",
     "skill"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('node:fs').chmodSync('dist/src/cli/main.js', 0o755)\"",
     "check": "tsc --noEmit",
     "test": "npm run build && node --test dist/tests/*.test.js"
   },
