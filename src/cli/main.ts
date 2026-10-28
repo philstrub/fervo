@@ -22,10 +22,13 @@ terminal. `fervo delegate` starts Claude Code with a grant, so that one session 
 `claim --checkout` gives every lease its own Git worktree at `<clone>/.fervo/worktrees/<lease>`,
 created at the claim's `parent_commit`. Several agents can then share one clone: none of them moves
 another's HEAD or index. The clone's own working tree is never switched. `.fervo/` is excluded from Git.
+A claim replayed with the same key returns the same lease; when that lease's worktree already exists, the
+command reuses it and reports it again. When only the lease branch exists (a first run interrupted after
+`git worktree add` created the branch), the worktree is added on that branch instead of recreating it.
 */
 import { Command, Option } from 'commander';
 import { dirname, resolve } from 'node:path';
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -169,7 +172,10 @@ cli.command('claim').description('Declare intent and scope before editing')
     if (options.checkout) {
       git(cwd(), 'fetch', '--quiet', 'origin', out.parent_ref);
       const worktree = resolve(dirname(git(cwd(), 'rev-parse', '--path-format=absolute', '--git-common-dir')), '.fervo', 'worktrees', out.lease);
-      git(cwd(), 'worktree', 'add', '--quiet', '-b', out.branch, worktree, out.parent_commit);
+      if (!existsSync(worktree)) {
+        if (git(cwd(), 'branch', '--list', out.branch)) git(cwd(), 'worktree', 'add', '--quiet', worktree, out.branch);
+        else git(cwd(), 'worktree', 'add', '--quiet', '-b', out.branch, worktree, out.parent_commit);
+      }
       emit({ ...out, worktree });
       return;
     }

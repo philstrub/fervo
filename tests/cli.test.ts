@@ -239,3 +239,43 @@ test('concurrent claims in one clone get separate worktrees and leave the clone 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('claim --checkout replayed with the same key reuses the existing worktree, or the leftover branch', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fervo-checkout-retry-'));
+  const bare = join(root, 'repo.git');
+  const seed = join(root, 'seed');
+  const clone = join(root, 'clone');
+  const server = createServer(async (request, response) => {
+    for await (const _chunk of request);
+    response.end(JSON.stringify({ lease: 'l_1', branch: 'agents/codex-1/l_1', parent: 'n_0', parent_commit: git(bare, 'rev-parse', 'refs/heads/main'), parent_ref: 'refs/heads/main', expires_at: 'tomorrow', blocked: [], overlaps: [] }));
+  });
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  try {
+    git(root, 'init', '--bare', '-b', 'main', bare);
+    git(root, 'init', '-b', 'main', seed);
+    git(seed, 'config', 'user.email', 'test@example.com');
+    git(seed, 'config', 'user.name', 'Tester');
+    await writeFile(join(seed, 'a.txt'), '1\n');
+    git(seed, 'add', 'a.txt');
+    git(seed, 'commit', '-m', 'initial');
+    git(seed, 'push', bare, 'HEAD:main');
+    git(root, 'clone', '--quiet', '-c', `fervo.url=http://127.0.0.1:${(server.address() as { port: number }).port}`, '-c', `http.${bare}.extraHeader=Authorization: Bearer secret`, bare, clone);
+    await writeFile(join(clone, '.git', 'info', 'exclude'), '.fervo/\n');
+    const args = ['claim', '--parent', 'n_0', '--scope', 'a.txt', '--intent', 'set 2', '--key', 'claim-1', '--checkout'];
+    const first = JSON.parse((await cli(clone, ...args)).stdout);
+    await writeFile(join(first.worktree, 'a.txt'), '2\n');
+    git(first.worktree, '-c', 'user.name=Agent', '-c', 'user.email=agent@example.com', 'commit', '-qam', 'set 2');
+    const retry = JSON.parse((await cli(clone, ...args)).stdout);
+    assert.deepEqual(retry, first);
+    assert.equal(git(first.worktree, 'branch', '--show-current'), 'agents/codex-1/l_1');
+    assert.equal(git(first.worktree, 'log', '-1', '--format=%s'), 'set 2');
+    assert.equal(await readFile(join(first.worktree, 'a.txt'), 'utf8'), '2\n');
+    git(clone, 'worktree', 'remove', first.worktree);
+    assert.deepEqual(JSON.parse((await cli(clone, ...args)).stdout), first);
+    assert.equal(git(first.worktree, 'branch', '--show-current'), 'agents/codex-1/l_1');
+    assert.equal(git(first.worktree, 'log', '-1', '--format=%s'), 'set 2');
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
