@@ -33,6 +33,7 @@ may not use gets a 403 and exits 1.
   `<prefix>/<lease>`.
 """
 
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -40,7 +41,7 @@ import typer
 
 from fervo.cli.remote import Remote, emit, get, load_remote, post
 from fervo.git import git
-from fervo.models import Claim, ClaimIn, ClaimOut, Context, SubmitIn, SubmitOut, Whoami
+from fervo.models import Claim, ClaimIn, ClaimOut, Context, NodeStatus, SubmitIn, SubmitOut, Whoami
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -118,3 +119,21 @@ def submit(lease: Annotated[str, typer.Option(help="The lease this work was clai
     commit = git(cwd, "rev-parse", "HEAD")
     git(cwd, "push", "--quiet", "origin", f"HEAD:refs/heads/{git(cwd, 'config', '--get', 'fervo.prefix')}/{lease}")
     emit(SubmitOut.model_validate(post(load_remote(cwd), "/submit", key, SubmitIn(lease=lease, commit=commit))))
+
+
+@app.command()
+def status(
+    id: Annotated[str, typer.Argument(help="A node (n_57) or the job evaluating it (j_31).")],
+    wait: Annotated[bool, typer.Option(help="Poll with backoff until the node is no longer submitted or evaluating.")] = False,
+    timeout: Annotated[int, typer.Option(help="With --wait, stop polling after this many seconds and print the last status.")] = 1800,
+) -> None:
+    """A node's state, outcome, paired gain over its parent, and frontier rank."""
+    remote = load_remote(Path.cwd())
+    out = NodeStatus.model_validate(get(remote, f"/status/{id}"))
+    deadline = time.monotonic() + timeout
+    delay = 1
+    while wait and out.state in ("submitted", "evaluating") and time.monotonic() < deadline:
+        time.sleep(delay)
+        delay = min(delay * 2, 30)
+        out = NodeStatus.model_validate(get(remote, f"/status/{id}"))
+    emit(out)
