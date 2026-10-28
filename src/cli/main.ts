@@ -18,9 +18,13 @@ enroller token instead, plus a Claude Code SessionStart hook (`fervo enroll`) th
 its own actor and puts that actor's token in the session's shell as `FERVO_TOKEN`. The human token is
 never written anywhere: human-only commands read it from `FERVO_TOKEN` or prompt for it on the
 terminal. `fervo delegate` starts Claude Code with a grant, so that one session enrolls as a human.
+## 6. Working Trees
+`claim --checkout` gives every lease its own Git worktree at `<clone>/.fervo/worktrees/<lease>`,
+created at the claim's `parent_commit`. Several agents can then share one clone: none of them moves
+another's HEAD or index. The clone's own working tree is never switched. `.fervo/` is excluded from Git.
 */
 import { Command, Option } from 'commander';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
@@ -106,6 +110,7 @@ cli.command('clone').description('Clone a Fervo repo: for an agent token, as tha
     if (who.actor.kind !== 'agent' && who.actor.kind !== 'human') throw new Error(`actor kind ${who.actor.kind} cannot clone`);
     const stored = who.actor.kind === 'agent' ? { actor: who.actor, auth: remote.auth } : await request(remote, 'POST', '/enrollers', ActorCreated, { key: newKey('enroller'), body: EnrollerIn.parse({ provider: options.provider, harness: options.harness }) }).then(out => ({ actor: out.actor, auth: `Bearer ${out.token}` }));
     git(cwd(), 'clone', '--quiet', '-c', `http.${who.git_url}.extraHeader=Authorization: ${stored.auth}`, '-c', `fervo.url=${remote.url}`, who.git_url, directory);
+    appendFileSync(resolve(directory, '.git', 'info', 'exclude'), '.fervo/\n');
     if (who.actor.kind === 'human') {
       mkdirSync(resolve(directory, '.claude'), { recursive: true });
       const hook = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: `"${process.execPath}" "${resolve(process.argv[1]!)}" enroll` }] }] } };
@@ -157,13 +162,16 @@ cli.command('claim').description('Declare intent and scope before editing')
   .requiredOption('--parent <node>').requiredOption('--scope <path>', 'repeat for each path', collect, [])
   .requiredOption('--intent <text>').requiredOption('--key <key>')
   .option('--supersedes <node>', 'prior node being rebased onto a moved target')
-  .option('--checkout', 'fetch parent and create the lease branch')
+  .option('--checkout', 'fetch the parent and create the lease branch in its own worktree')
   .action(async (options: { parent: string; scope: string[]; intent: string; key: string; supersedes?: string; checkout?: boolean }) => {
     const body = ClaimIn.parse({ parent: options.parent, scope: options.scope, intent: options.intent, ...(options.supersedes ? { supersedes: options.supersedes } : {}) });
     const out = await request(loadRemote(cwd()), 'POST', '/claims', ClaimOut, { key: options.key, body });
     if (options.checkout) {
       git(cwd(), 'fetch', '--quiet', 'origin', out.parent_ref);
-      git(cwd(), 'checkout', '--quiet', '-b', out.branch, 'FETCH_HEAD');
+      const worktree = resolve(dirname(git(cwd(), 'rev-parse', '--path-format=absolute', '--git-common-dir')), '.fervo', 'worktrees', out.lease);
+      git(cwd(), 'worktree', 'add', '--quiet', '-b', out.branch, worktree, out.parent_commit);
+      emit({ ...out, worktree });
+      return;
     }
     emit(out);
   });

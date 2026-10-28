@@ -18,6 +18,7 @@ cd <dir>
 fervo context [--scope src/]
 fervo claim --parent <main.node> --scope src/a/ [--scope src/b/] \
   --intent "<one concrete change>" --key <k1> --checkout
+cd <worktree>                                      # from the claim response
 # edit, git add, git commit
 fervo renew <lease> --key <k2>                     # only if the work runs long
 fervo submit --lease <lease> --key <k3>
@@ -25,9 +26,9 @@ fervo status <node> --wait                         # repeat while next_action is
 ```
 
 1. **Read context.** Check `goal` and `rules.pinned`. Skip directions in `tried` that already failed or were within noise, and build on `frontier` nodes when they suit you. Avoid scopes held in `claims`.
-2. **Claim.** Use the current `main.node` as `--parent`, unless you are deliberately building on a frontier node. Keep the intent concrete and the scope narrow. `--checkout` creates the claim's `branch` at the parent.
+2. **Claim.** Use the current `main.node` as `--parent`, unless you are deliberately building on a frontier node. Keep the intent concrete and the scope narrow. `--checkout` creates the claim's `branch` at the parent in a new worktree, `<clone>/.fervo/worktrees/<lease>`, and returns its path as `worktree`. `cd` into it: the clone's own working tree never changes, so other agents in the same clone are not disturbed.
 3. **Read the claim response.** If `overlaps` is non-empty, narrow your scope, choose another direction, or proceed on purpose. Never edit a path in `blocked`.
-4. **Work** with plain Git. Commit everything: `submit` refuses uncommitted tracked changes.
+4. **Work** with plain Git inside `worktree`. Commit everything: `submit` refuses uncommitted tracked changes. Run `submit` from the worktree; it pushes that worktree's HEAD.
 5. **Renew** before `expires_at` if needed. A claim lasts 2 hours, and renewal is never automatic.
 6. **Submit.** The CLI pushes HEAD to your lease branch and returns `{node, job}`. Your claim is now `submitted` and can no longer be renewed or released.
 7. **Wait** with `status --wait`, which returns on the next change or after the timeout (30 seconds at most). Then act on `next_action`.
@@ -50,6 +51,7 @@ A rebase is a new claim on the current `main` that names your old node:
 ```sh
 MAIN=$(fervo context | jq -r .main.node)
 fervo claim --parent "$MAIN" --supersedes <old-node> --scope <same> --intent "<same>, rebased" --key <new> --checkout
+cd <new worktree>
 git cherry-pick <old claim's parent_commit>..<old claim's branch>
 fervo submit --lease <new-lease> --key <new>
 ```
@@ -66,12 +68,23 @@ If a command fails with no clear answer (a network error or a crash), run the id
 |---|---|---|
 | `clone` | `path` | the working directory |
 | `context` | `main.node`, `rules.pinned`, `claims`, `tried`, `frontier` | `--parent`; paths to avoid; directions to skip or build on |
-| `claim` | `lease`, `branch`, `parent_commit`, `expires_at`, `blocked`, `overlaps`, `review_job` | `submit`, `renew`, `release`; the cherry-pick base; renewing in time |
+| `claim` | `lease`, `branch`, `worktree`, `parent_commit`, `expires_at`, `blocked`, `overlaps`, `review_job` | `submit`, `renew`, `release`; the cherry-pick base; renewing in time |
 | `submit` | `node`, `job` | `status`, `retry`, `abandon`, `--supersedes` |
 | `status` | `state`, `outcome`, `delta`, `interval`, `reason`, `next_action` | the next step |
 | yourself | each `--key` with its exact arguments | safe replays |
 
 `delta` is the gain over the parent. `interval` and `main.score` are absolute scores.
+
+## Clean up
+
+When a node's `next_action` is `stop`, or after `release`, leave the worktree and remove it:
+
+```sh
+cd <clone>
+git worktree remove .fervo/worktrees/<lease>
+```
+
+The branch stays on the server, so a later rebase can still cherry-pick from it.
 
 ## Other actions
 

@@ -73,7 +73,7 @@ The model flags and template files are required but unused here, because the pol
 
 ## 5. Two agents claim overlapping work
 
-Each agent clones with its own token, reads the context, and claims before editing. Agent-2's scope `src/` contains agent-1's `src/a.txt`, so agent-2's claim response lists agent-1's lease under `overlaps`. That is a warning, not a refusal.
+Each agent clones with its own token, reads the context, and claims before editing. `--checkout` puts each lease in its own worktree under `.fervo/worktrees/`, and the response names it in `worktree`. Agent-2's scope `src/` contains agent-1's `src/a.txt`, so agent-2's claim response lists agent-1's lease under `overlaps`. That is a warning, not a refusal.
 
 ```sh
 fervo clone $URL agent-1 --token "$A1" >/dev/null
@@ -82,21 +82,22 @@ for a in agent-1 agent-2; do git -C $a config user.name $a; git -C $a config use
 cd agent-1; fervo context | jq '{goal, main, claims, rules}'
 C1=$(fervo claim --parent n_0 --scope src/a.txt --intent "a to 5" --key a1-claim --checkout); echo "$C1" | jq .
 cd ../agent-2
-C2=$(fervo claim --parent n_0 --scope src/ --intent "b to 3" --key a2-claim --checkout); echo "$C2" | jq '{lease, overlaps}'
+C2=$(fervo claim --parent n_0 --scope src/ --intent "b to 3" --key a2-claim --checkout); echo "$C2" | jq '{lease, worktree, overlaps}'
 L1=$(echo "$C1" | jq -r .lease); L2=$(echo "$C2" | jq -r .lease); P2=$(echo "$C2" | jq -r .parent_commit)
+W1=$(echo "$C1" | jq -r .worktree); W2=$(echo "$C2" | jq -r .worktree)
 ```
 
 ## 6. Commit and submit
 
-Agents edit and commit with plain Git. `submit` pushes HEAD to the lease branch and creates a node. Repeating a write with the same `--key` and the same arguments returns the original response. Reusing a key with different arguments is an error.
+Agents edit and commit with plain Git, inside the lease's worktree. `submit` pushes that worktree's HEAD to the lease branch and creates a node. Repeating a write with the same `--key` and the same arguments returns the original response. Reusing a key with different arguments is an error.
 
 ```sh
-cd ../agent-1; echo 5 > src/a.txt; git commit -qam "a to 5"
+cd "$W1"; echo 5 > src/a.txt; git commit -qam "a to 5"
 fervo renew $L1 --key a1-renew | jq -c '{state, expires_at}'
 N1=$(fervo submit --lease $L1 --key a1-submit | jq -r .node)
 fervo submit --lease $L1 --key a1-submit | jq -c .                     # replay: same node
 ! fervo claim --parent n_0 --scope src/ --intent other --key a1-claim   # same key, new body: HTTP 400
-cd ../agent-2; echo 3 > src/b.txt; git commit -qam "b to 3"
+cd "$W2"; echo 3 > src/b.txt; git commit -qam "b to 3"
 N2=$(fervo submit --lease $L2 --key a2-submit | jq -r .node)
 ```
 
@@ -105,7 +106,7 @@ N2=$(fervo submit --lease $L2 --key a2-submit | jq -r .node)
 `status --wait` returns as soon as the node changes, or after 30 seconds. Loop until `next_action` is no longer `wait`.
 
 ```sh
-cd ../agent-1
+cd "$W1"
 until [ "$(fervo status $N1 --wait | jq -r .next_action)" != wait ]; do :; done
 until [ "$(fervo status $N2 --wait | jq -r .next_action)" != wait ]; do :; done
 fervo status $N1 | jq -c .; fervo status $N2 | jq -c .
@@ -123,9 +124,10 @@ Both nodes improved the metric. Agent-1's merged first, so `main` moved past age
 A rebase is a new claim on the current `main` node that names the old node with `--supersedes`. The agent replays its commits onto the new branch and submits under the new lease.
 
 ```sh
-cd ../agent-2
+cd "$W2"
 MAIN=$(fervo context | jq -r .main.node)
 C3=$(fervo claim --parent $MAIN --supersedes $N2 --scope src/b.txt --intent "b to 3, rebased" --key a2-rebase --checkout)
+cd "$(echo "$C3" | jq -r .worktree)"
 git cherry-pick "$P2..agents/agent-2/$L2" >/dev/null
 N3=$(fervo submit --lease $(echo "$C3" | jq -r .lease) --key a2-submit-2 | jq -r .node)
 until [ "$(fervo status $N3 --wait | jq -r .next_action)" != wait ]; do :; done
@@ -143,6 +145,7 @@ Changing `bench.sh` would inflate the score. The submit still returns a node, bu
 ```sh
 MAIN=$(fervo context | jq -r .main.node)
 C4=$(fervo claim --parent $MAIN --scope bench.sh --intent "inflate metric" --key a2-pinned --checkout)
+cd "$(echo "$C4" | jq -r .worktree)"
 echo 'echo 999' >> bench.sh; git commit -qam cheat
 N4=$(fervo submit --lease $(echo "$C4" | jq -r .lease) --key a2-pinned-submit | jq -r .node)
 fervo status $N4 | jq -c .

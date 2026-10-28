@@ -24,6 +24,12 @@ One dated line per choice that changes `dev_docs/03-fervo-engineering-plan.md`. 
 - 2026-10-28. Human powers in a session need a grant (`fervo delegate`), valid 12 hours and reusable within that time, so compaction and `/clear` re-enroll without a new prompt. A session's kind never changes.
 - 2026-10-28. Re-enrolling a session rotates its token instead of replaying a stored one. Responses stored for idempotent replay have `token` and `grant` nulled, so the database holds only hashes. A replayed `actor add` therefore returns `token: null`.
 
+## Working trees (branch `feat/separate-working-trees`)
+
+- 2026-10-28. `claim --checkout` creates a Git worktree per lease at `<clone>/.fervo/worktrees/<lease>` instead of switching the clone's branch. A shared working tree let two agents in one folder move each other's HEAD and index. This belongs in Fervo, not in the harness: Fervo owns the lease-to-branch mapping and `--checkout`, and `claude --worktree` is opt-in, specific to Claude Code, and starts from local HEAD instead of the claim's parent.
+- 2026-10-28. The worktree starts at the claim's `parent_commit`, not `FETCH_HEAD`, because concurrent fetches in one clone overwrite `FETCH_HEAD`.
+- 2026-10-28. Fervo does not delete worktrees. An agent may still be inside one, and a rebase cherry-picks from the old lease branch. The skill tells agents to run `git worktree remove` when their node stops.
+
 ## Package, runner, and study decisions
 
 - 2026-10-27. TypeScript on Node.js 24 LTS for the package, CLI, server, runner, and tests. Migrate the existing Python CLI prototype rather than maintaining two implementations.
