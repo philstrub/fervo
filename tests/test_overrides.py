@@ -34,3 +34,17 @@ def test_review_fail_from_an_agent_token_is_refused(workdir: Path, respx_mock, f
 
 def test_review_requires_a_verdict(workdir: Path, fervo) -> None:
     assert fervo("review", "n_57", "--evidence", "x", "--key", "v2").exit_code == 2
+
+
+def node_status(state: str, reason: str | None) -> dict:
+    return {"node": "n_57", "state": state, "outcome": "improved", "delta": 0.09, "interval": [0.04, 0.14], "rank": None, "reason": reason, "job": None}
+
+
+def test_merge_sends_the_reason_and_prints_the_merged_node(workdir: Path, respx_mock, fervo) -> None:
+    merged = node_status("merged", None)
+    route = respx_mock.post(f"{API}/nodes/n_57/merge").respond(json=merged)
+    result = fervo("merge", "n_57", "--reason", "demo deadline; reviewed by hand", "--key", "m0")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == merged
+    assert json.loads(route.calls.last.request.content) == {"reason": "demo deadline; reviewed by hand"}
+    assert route.calls.last.request.headers["Idempotency-Key"] == "m0"
