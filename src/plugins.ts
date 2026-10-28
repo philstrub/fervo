@@ -30,5 +30,5 @@ export const builtInPolicyRules: Record<string, PolicyRule> = {
   tests: { name: 'tests', evaluate: (_node, verdicts) => { const test=verdicts.find(v=>v.producer==='tests'); return !test?{state:'pending'}:test.passed===1?satisfied:{state:'failed',reason:test.evidence}; } },
   frontier_gain: { name: 'frontier_gain', evaluate: node => node.outcome==='improved'?satisfied:{state:'hold',reason:`gain is ${node.outcome}` } },
   review: { name: 'review', evaluate: (_node, verdicts) => { const review=verdicts.find(v=>v.producer==='review'); return !review?{state:'pending',job:'review'}:review.passed===1?satisfied:{state:'failed',reason:review.evidence}; } },
-  human: { name: 'human', evaluate: (_node, verdicts) => verdicts.some(v=>v.producer==='human'&&v.passed===1)?satisfied:{state:'pending'} },
+  human: { name: 'human', evaluate: (_node, verdicts) => { const human=verdicts.find(v=>v.producer==='human'); return !human?{state:'pending'}:human.passed===1?satisfied:{state:'failed',reason:human.evidence}; } },
 };

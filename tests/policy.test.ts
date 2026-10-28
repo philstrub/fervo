@@ -18,6 +18,7 @@ import { Config } from '../src/config.js';
 import { normalized, summarize } from '../src/scoring.js';
 import { requirements, scopesOverlap } from '../src/policy.js';
 import { checkPush } from '../src/server/git.js';
+import { builtInPolicyRules } from '../src/plugins.js';
 
 test('paired gain distinguishes improvement, regression and baseline noise',()=>{
   assert.equal(normalized(12,10,'max'),1.2);
@@ -42,4 +43,12 @@ test('path rule requirements union across files and scope prefixes overlap',()=>
   assert.equal(scopesOverlap(['src/'],['src/auth/'],[]),true);
   assert.equal(scopesOverlap(['src/*.ts'],['src/main.ts'],['src/main.ts']),true);
   assert.equal(scopesOverlap(['src/'],['docs/'],[]),false);
+});
+
+test('human rule rejects on a failing verdict instead of waiting forever',()=>{
+  const config=Config.parse({goal:{text:'goal'},tests:{cmd:'true'},metrics:[{name:'m',cmd:'echo 1',direction:'max',weight:1}],pinned:{paths:['fervo.toml']},merge:{main:{require:['human']}}});
+  const human=builtInPolicyRules.human!;
+  assert.deepEqual(human.evaluate({outcome:'improved'},[],config),{state:'pending'});
+  assert.deepEqual(human.evaluate({outcome:'improved'},[{producer:'human',passed:0,evidence:'breaks login'}],config),{state:'failed',reason:'breaks login'});
+  assert.deepEqual(human.evaluate({outcome:'improved'},[{producer:'human',passed:1,evidence:'looks good'}],config),{state:'satisfied'});
 });
