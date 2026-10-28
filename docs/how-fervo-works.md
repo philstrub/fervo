@@ -83,7 +83,7 @@ Each changed path contributes requirements: from the `[[merge.rules]]` entries t
 |---|---|---|
 | `tests` | the tests verdict passed | rejected |
 | `frontier_gain` | outcome is `improved` | stays `verified`; no automatic merge |
-| `review` | a runner model review passed (queued on demand) | rejected if it fails; if the job itself cannot run (runner error, lease attempts exhausted), the node stays `verified` with `reason: review unavailable: …` and `next_action: retry`, and `fervo retry` queues a new review |
+| `review` | a runner model review passed (queued on demand) | rejected if it fails; if the job itself cannot run (runner error, lease attempts exhausted), the node stays `verified` with `next_action: retry` and a `reason` naming the cause (`review unavailable: <error>` or `review lease attempts exhausted`), and `fervo retry` queues a new review |
 | `human` | a human ran `fervo review --pass` | rejected on `fervo review --fail`; stays `verified` until a verdict |
 
 When every requirement holds, the server moves `main` with a compare-and-swap from the parent commit to the node commit. If `main` is no longer at the parent, the node gets `reason: needs_rebase` and its author re-claims with `--supersedes`. After a merge, a `postmerge` job re-runs the tests and metrics on `main`. If those tests fail while the node is still the head of `main`, the node is reverted. If `main` has already moved past it, the node stays `merged` with a `reason` asking for a manual revert, since reverting would discard the later nodes.
