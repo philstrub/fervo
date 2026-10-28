@@ -76,7 +76,6 @@ export class State {
     return { goal:config.goal.text, metrics:config.metrics.map(m=>({name:m.name,direction:m.direction,weight:m.weight})), main:{commit:head.commit_sha,node:head.id,score:head.score_mean ?? undefined}, frontier, claims, tried, rules:{pinned:config.pinned.paths,requirements_by_path:{'*':config.merge.main.require,...Object.fromEntries(config.merge.rules.flatMap(r=>r.paths.map(p=>[p,r.require])))}}, mine:{leases:mine,updates}, frontier_version:version };
   }
   write(actor: Row, path: string, raw: unknown): object {
-    const config = mainConfig(this.repo);
     if (path === '/actors') {
       this.human(actor); const body=ActorIn.parse(raw); const token=randomBytes(32).toString('hex');
       this.db.prepare('INSERT INTO actors(id,kind,provider,model,harness,token_hash,created_at) VALUES(?,?,?,?,?,?,?)').run(body.id,body.kind,body.provider,body.model,body.harness,createHash('sha256').update(token).digest('hex'),now());
@@ -112,6 +111,7 @@ export class State {
     if (path === '/baseline') { this.human(actor); const id=this.job('baseline',null,null); return this.status(id); }
     if (path === '/claims') {
       if (actor.kind !== 'agent' && actor.kind !== 'human') throw new Error('only contributors can claim');
+      const config=mainConfig(this.repo);
       const body=ClaimIn.parse(raw); const parent=this.one('SELECT * FROM nodes WHERE id=?',body.parent);
       if (!['merged','verified'].includes(parent.state)) throw new Error('parent must be merged or verified');
       if (body.supersedes) { const old=this.one('SELECT * FROM nodes WHERE id=?',body.supersedes); if(old.author!==actor.id || body.parent!==this.currentMainNode()) throw new Error('supersedes must name your node and current main parent'); }
@@ -128,6 +128,7 @@ export class State {
       return {lease:id,branch:`${this.branchPrefix(actor)}/${id}`,parent:body.parent,parent_commit:parent.commit_sha,parent_ref:body.parent==='n_0'?'refs/heads/main':`refs/fervo/nodes/${body.parent}`,expires_at:expiry,blocked:config.pinned.paths,overlaps,review_job:reviewJob};
     }
     if (path === '/submit') {
+      const config=mainConfig(this.repo);
       const body=SubmitIn.parse(raw); const claim=this.one('SELECT * FROM claims WHERE id=?',body.lease);
       if(claim.holder!==actor.id || claim.state!=='active' || claim.expires_at<=now()) throw new Error('lease is not active for actor');
       if(this.db.prepare("SELECT 1 FROM jobs WHERE claim=? AND kind='claim_review'").get(claim.id)&&!this.db.prepare("SELECT 1 FROM verdicts WHERE claim=? AND producer='claim_review' AND passed=1").get(claim.id))throw new Error('claim review has not passed');
@@ -168,7 +169,7 @@ export class State {
       const reason=ReasonIn.parse(raw).reason;
       if((command==='abandon'||command==='veto')&&!['submitted','evaluating','verified','failed'].includes(node.state))throw new Error(node.state==='merged'?'node is merged: revert it instead':`node is already ${node.state}`);
       if(command==='abandon'){if(actor.id!==node.author&&actor.kind!=='human')throw new Error('only author or human may abandon');this.db.prepare("UPDATE nodes SET state='abandoned',reason=? WHERE id=?").run(reason,node.id);}
-      else {this.human(actor);if(command==='merge'){if(!config.merge.main.human_override)throw new Error('human override disabled');this.merge(node.id,reason);}else if(command==='veto'){this.db.prepare("UPDATE nodes SET state='abandoned',reason=? WHERE id=?").run(reason,node.id);}else if(command==='revert'){this.revert(node.id,reason);}}
+      else {this.human(actor);if(command==='merge'){if(!mainConfig(this.repo).merge.main.human_override)throw new Error('human override disabled');this.merge(node.id,reason);}else if(command==='veto'){this.db.prepare("UPDATE nodes SET state='abandoned',reason=? WHERE id=?").run(reason,node.id);}else if(command==='revert'){this.revert(node.id,reason);}}
       this.verdict(node.id,null,actor.id,'human',null,command==='merge',null,reason,'override');this.event(actor.id,`human_${command}`,node.id,{reason});return this.status(node.id);
     }
     throw new Error(`unknown write path ${path}`);
