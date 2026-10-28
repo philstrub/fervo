@@ -100,6 +100,8 @@ refs/heads/humans/<actor>/<lease>  pushed by that human
 refs/fervo/nodes/<node>            created at submit; never moves
 ```
 
+On the agent's machine, every lease checked out with `claim --checkout` gets its own Git worktree, `<clone>/.fervo/worktrees/<lease>`. The clone's working tree stays where it was, so several agents can share one clone without moving each other's HEAD or index.
+
 A `pre-receive` hook rejects any push outside the pusher's own prefix. Runner tokens cannot push at all.
 
 ## Writes and retries

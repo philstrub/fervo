@@ -16,7 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer as createNetServer } from 'node:net';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runRunner } from '../src/runner/run.js';
@@ -48,10 +48,12 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
       command(clone,'git','config','user.email','agent@example.com');command(clone,'git','config','user.name','Agent');
       const context=fervo(clone,'context');assert.equal(context.main.node,'n_0');
       const claim=fervo(clone,'claim','--parent','n_0','--scope','score.txt','--intent','improve score','--key','claim-1','--checkout');
-      writeFileSync(join(clone,'score.txt'),'12\n');command(clone,'git','add','score.txt');command(clone,'git','commit','-qm','improve score');
-      const mainPush=spawnSync('git',['push','origin','HEAD:refs/heads/main'],{cwd:clone,encoding:'utf8'});assert.notEqual(mainPush.status,0);
-      const foreignPush=spawnSync('git',['push','origin','HEAD:refs/heads/agents/other/lease'],{cwd:clone,encoding:'utf8'});assert.notEqual(foreignPush.status,0);
-      const submitted=fervo(clone,'submit','--lease',claim.lease,'--key','submit-1');
+      assert.equal(claim.worktree,join(realpathSync(clone),'.fervo','worktrees',claim.lease));assert.equal(command(clone,'git','status','--porcelain'),'');
+      writeFileSync(join(claim.worktree,'score.txt'),'12\n');command(claim.worktree,'git','add','score.txt');command(claim.worktree,'git','commit','-qm','improve score');
+      assert.equal(readFileSync(join(clone,'score.txt'),'utf8'),'10\n');
+      const mainPush=spawnSync('git',['push','origin','HEAD:refs/heads/main'],{cwd:claim.worktree,encoding:'utf8'});assert.notEqual(mainPush.status,0);
+      const foreignPush=spawnSync('git',['push','origin','HEAD:refs/heads/agents/other/lease'],{cwd:claim.worktree,encoding:'utf8'});assert.notEqual(foreignPush.status,0);
+      const submitted=fervo(claim.worktree,'submit','--lease',claim.lease,'--key','submit-1');
       assert.equal(fervo(clone,'status',submitted.node).state,'submitted');
       await runRunner(url,runner.token,settings,model,true);
       assert.equal(fervo(clone,'status',submitted.node).state,'verified');
@@ -66,14 +68,14 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
       assert.equal(sameReplay.status,200);assert.equal((await sameReplay.json() as {lease:string}).lease,claim.lease);
 
       const same=fervo(clone,'claim','--parent',submitted.node,'--scope','notes.txt','--intent','document without changing metric','--key','same-claim','--checkout');
-      writeFileSync(join(clone,'notes.txt'),'notes\n');command(clone,'git','add','notes.txt');command(clone,'git','commit','-qm','add notes');
-      const sameNode=fervo(clone,'submit','--lease',same.lease,'--key','same-submit').node;
+      writeFileSync(join(same.worktree,'notes.txt'),'notes\n');command(same.worktree,'git','add','notes.txt');command(same.worktree,'git','commit','-qm','add notes');
+      const sameNode=fervo(same.worktree,'submit','--lease',same.lease,'--key','same-submit').node;
       await runRunner(url,runner.token,settings,model,true);
       assert.equal(fervo(clone,'status',sameNode).outcome,'within_noise');
 
       const pinned=fervo(clone,'claim','--parent',submitted.node,'--scope','fervo.toml','--intent','change policy','--key','pinned-claim','--checkout');
-      writeFileSync(join(clone,'fervo.toml'),readFileSync(join(clone,'fervo.toml'),'utf8')+'\n# unauthorized\n');command(clone,'git','add','fervo.toml');command(clone,'git','commit','-qm','change policy');
-      const pinnedNode=fervo(clone,'submit','--lease',pinned.lease,'--key','pinned-submit').node;
+      writeFileSync(join(pinned.worktree,'fervo.toml'),readFileSync(join(pinned.worktree,'fervo.toml'),'utf8')+'\n# unauthorized\n');command(pinned.worktree,'git','add','fervo.toml');command(pinned.worktree,'git','commit','-qm','change policy');
+      const pinnedNode=fervo(pinned.worktree,'submit','--lease',pinned.lease,'--key','pinned-submit').node;
       assert.equal(fervo(clone,'status',pinnedNode).state,'rejected');
 
       const secondActor=fervo(human,'actor','add','agent-2','--kind','agent','--provider','openai','--model','test','--harness','script','--key','add-agent-2');
@@ -82,16 +84,16 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
       const firstClaim=fervo(clone,'claim','--parent',submitted.node,'--scope','score.txt','--intent','raise to 14','--key','parallel-1','--checkout');
       const secondClaim=fervo(clone2,'claim','--parent',submitted.node,'--scope','score.txt','--intent','raise to 13','--key','parallel-2','--checkout');
       assert.ok(secondClaim.overlaps.some((entry:{kind:string;id:string})=>entry.kind==='claim'&&entry.id===firstClaim.lease));
-      writeFileSync(join(clone,'score.txt'),'14\n');command(clone,'git','add','score.txt');command(clone,'git','commit','-qm','raise to 14');
-      writeFileSync(join(clone2,'score.txt'),'13\n');command(clone2,'git','add','score.txt');command(clone2,'git','commit','-qm','raise to 13');
-      const firstNode=fervo(clone,'submit','--lease',firstClaim.lease,'--key','parallel-submit-1').node;
-      const secondNode=fervo(clone2,'submit','--lease',secondClaim.lease,'--key','parallel-submit-2').node;
+      writeFileSync(join(firstClaim.worktree,'score.txt'),'14\n');command(firstClaim.worktree,'git','add','score.txt');command(firstClaim.worktree,'git','commit','-qm','raise to 14');
+      writeFileSync(join(secondClaim.worktree,'score.txt'),'13\n');command(secondClaim.worktree,'git','add','score.txt');command(secondClaim.worktree,'git','commit','-qm','raise to 13');
+      const firstNode=fervo(firstClaim.worktree,'submit','--lease',firstClaim.lease,'--key','parallel-submit-1').node;
+      const secondNode=fervo(secondClaim.worktree,'submit','--lease',secondClaim.lease,'--key','parallel-submit-2').node;
       for(let i=0;i<4;i++)await runRunner(url,runner.token,settings,model,true);
       assert.equal(fervo(clone,'status',firstNode).state,'merged');
       assert.equal(fervo(clone2,'status',secondNode).next_action,'rebase');
       const rebased=fervo(clone2,'claim','--parent',firstNode,'--supersedes',secondNode,'--scope','score.txt','--intent','raise to 15 after rebase','--key','rebased-claim','--checkout');
-      writeFileSync(join(clone2,'score.txt'),'15\n');command(clone2,'git','add','score.txt');command(clone2,'git','commit','-qm','raise to 15');
-      const rebasedNode=fervo(clone2,'submit','--lease',rebased.lease,'--key','rebased-submit').node;
+      writeFileSync(join(rebased.worktree,'score.txt'),'15\n');command(rebased.worktree,'git','add','score.txt');command(rebased.worktree,'git','commit','-qm','raise to 15');
+      const rebasedNode=fervo(rebased.worktree,'submit','--lease',rebased.lease,'--key','rebased-submit').node;
       for(let i=0;i<3;i++)await runRunner(url,runner.token,settings,model,true);
       assert.equal(fervo(clone2,'status',rebasedNode).state,'merged');
       const leased=await fetch(`${url}/jobs/lease`,{method:'POST',headers:{Authorization:`Bearer ${runner.token}`,'Idempotency-Key':'lease-postmerge','Content-Type':'application/json'},body:'{"wait":0}'});
@@ -102,8 +104,8 @@ test('scripted agent reaches main through baseline, eval, review and postmerge',
       assert.equal(fervo(clone2,'context').main.node,firstNode);
 
       const override=fervo(clone,'claim','--parent',firstNode,'--scope','notes.txt','--intent','add operator note','--key','override-claim','--checkout');
-      writeFileSync(join(clone,'notes.txt'),'operator note\n');command(clone,'git','add','notes.txt');command(clone,'git','commit','-qm','operator note');
-      const overrideNode=fervo(clone,'submit','--lease',override.lease,'--key','override-submit').node;
+      writeFileSync(join(override.worktree,'notes.txt'),'operator note\n');command(override.worktree,'git','add','notes.txt');command(override.worktree,'git','commit','-qm','operator note');
+      const overrideNode=fervo(override.worktree,'submit','--lease',override.lease,'--key','override-submit').node;
       await runRunner(url,runner.token,settings,model,true);
       assert.equal(fervo(clone,'status',overrideNode).outcome,'within_noise');
       assert.equal(fervo(human,'merge',overrideNode,'--reason','approved docs change','--key','override-merge').state,'merged');

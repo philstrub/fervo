@@ -14,7 +14,7 @@ A write is retryable by key; a rejected policy result is ordinary JSON; submit p
 */
 import assert from 'node:assert/strict';
 import { spawnSync, execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -186,6 +186,47 @@ test('operator writes preserve idempotency keys and return validated objects', a
     assert.deepEqual(calls[0]?.body, { id: 'filippo', kind: 'human', provider: null, model: null, harness: null });
     assert.deepEqual(calls[3]?.body, { passed: false, evidence: 'tests failed' });
     assert.deepEqual(calls[4]?.body, { reason: 'manual override' });
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('concurrent claims in one clone get separate worktrees and leave the clone untouched', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fervo-worktree-'));
+  const bare = join(root, 'repo.git');
+  const seed = join(root, 'seed');
+  const clone = join(root, 'clone');
+  let leases = 0;
+  const server = createServer(async (request, response) => {
+    for await (const _chunk of request);
+    const base = git(bare, 'rev-parse', 'refs/heads/main');
+    response.end(JSON.stringify(request.url === '/claims' ? { lease: `l_${++leases}`, parent: 'n_0', parent_commit: base, parent_ref: 'refs/heads/main', expires_at: 'tomorrow', blocked: [], overlaps: [] } : { node: `n_${leases}`, job: 'j_1' }));
+  });
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  try {
+    git(root, 'init', '--bare', '-b', 'main', bare);
+    git(root, 'init', '-b', 'main', seed);
+    git(seed, 'config', 'user.email', 'test@example.com');
+    git(seed, 'config', 'user.name', 'Tester');
+    await writeFile(join(seed, 'a.txt'), '1\n');
+    git(seed, 'add', 'a.txt');
+    git(seed, 'commit', '-m', 'initial');
+    git(seed, 'push', bare, 'HEAD:main');
+    git(root, 'clone', '--quiet', '-c', `fervo.url=http://127.0.0.1:${(server.address() as { port: number }).port}`, '-c', 'fervo.prefix=agents/codex-1', '-c', `http.${bare}.extraHeader=Authorization: Bearer secret`, bare, clone);
+    await writeFile(join(clone, '.git', 'info', 'exclude'), '.fervo/\n');
+    const claims = await Promise.all([1, 2].map(async n => JSON.parse((await cli(clone, 'claim', '--parent', 'n_0', '--scope', 'a.txt', '--intent', `set ${n}`, '--key', `claim-${n}`, '--checkout')).stdout)));
+    assert.notEqual(claims[0].worktree, claims[1].worktree);
+    for (const [index, claim] of claims.entries()) {
+      assert.equal(git(claim.worktree, 'branch', '--show-current'), `agents/codex-1/${claim.lease}`);
+      await writeFile(join(claim.worktree, 'a.txt'), `${index + 2}\n`);
+      git(claim.worktree, '-c', 'user.name=Agent', '-c', 'user.email=agent@example.com', 'commit', '-qam', `set ${index + 2}`);
+    }
+    await Promise.all(claims.map(claim => cli(claim.worktree, 'submit', '--lease', claim.lease, '--key', `submit-${claim.lease}`)));
+    for (const [index, claim] of claims.entries()) assert.equal(git(bare, 'show', `refs/heads/agents/codex-1/${claim.lease}:a.txt`), String(index + 2));
+    assert.equal(git(clone, 'branch', '--show-current'), 'main');
+    assert.equal(git(clone, 'status', '--porcelain'), '');
+    assert.equal(await readFile(join(clone, 'a.txt'), 'utf8'), '1\n');
   } finally {
     server.close();
     await rm(root, { recursive: true, force: true });

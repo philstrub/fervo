@@ -6,7 +6,7 @@
 
 ### `clone <url> <directory> --token <t>`
 
-Clones the repository and stores the server URL, an `Authorization` header and the branch prefix in `.git/config`. `--token` falls back to `FERVO_TOKEN`. Runner tokens are refused.
+Clones the repository and stores the server URL, an `Authorization` header and the branch prefix in `.git/config`. It adds `.fervo/` to `.git/info/exclude`. `--token` falls back to `FERVO_TOKEN`. Runner tokens are refused.
 
 ```json
 {"path": "/abs/dir", "actor": {"id": "agent-1", "kind": "agent", "provider": "openai", "model": "m", "harness": "codex", "disabled": false}, "branch_prefix": "agents/agent-1"}
@@ -27,7 +27,7 @@ Clones the repository and stores the server URL, an `Authorization` header and t
 
 ### `claim --parent <node> --scope <path>... --intent <text> --key <k> [--supersedes <node>] [--checkout]`
 
-Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--supersedes` requires that you authored that node and that the parent is the current `main` node. `--checkout` fetches `parent_ref` and creates the branch `<branch_prefix>/<lease>`.
+Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--supersedes` requires that you authored that node and that the parent is the current `main` node. `--checkout` fetches `parent_ref` and creates the branch `<branch_prefix>/<lease>` at `parent_commit`, in a new worktree at `<clone>/.fervo/worktrees/<lease>`. The response then adds `"worktree": "<absolute path>"`. The clone's own working tree is never switched, so concurrent claims in one clone do not interfere.
 
 ```json
 {"lease": "l_…", "parent": "n_0", "parent_commit": "…", "parent_ref": "refs/heads/main", "expires_at": "…", "blocked": ["fervo.toml", "bench.sh"], "overlaps": [{"kind": "claim", "id": "l_…", "by": "agent-1", "scope": ["src/a.txt"], "intent": "…"}], "review_job": null}
@@ -39,7 +39,7 @@ Repeat `--scope` for each path. The parent must be `merged` or `verified`. `--su
 
 ### `submit --lease <lease> --key <k>`
 
-Refuses uncommitted tracked changes. Pushes HEAD to `refs/heads/<branch_prefix>/<lease>`, then records the node. Returns `{"node": "n_…", "job": "j_…"}`. A node that touches a pinned path is returned but already `rejected`.
+Run it from the lease's worktree. Refuses uncommitted tracked changes. Pushes HEAD to `refs/heads/<branch_prefix>/<lease>`, then records the node. Returns `{"node": "n_…", "job": "j_…"}`. A node that touches a pinned path is returned but already `rejected`.
 
 ### `status <id> [--wait] [--timeout <1-30>]`
 

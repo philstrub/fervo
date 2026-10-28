@@ -6,11 +6,13 @@ Use Fervo when a repository's remote is managed by Fervo. Run `fervo --help` for
 
 1. Run `fervo context` before editing. Read `goal`, `rules.pinned`, `claims`, `tried`, `frontier`, and `main`. Use `--scope PATH` to narrow overlapping work.
 2. Choose a parent node and declare a concrete intent and scope: `fervo claim --parent n_0 --scope src/ --intent "Improve parser throughput" --key claim-1 --checkout`. The response gives the lease, parent ref, expiry, blocked paths, and overlap warnings. Overlaps are warnings; decide deliberately whether to proceed. Never edit a pinned path.
-3. Work on the lease branch with ordinary Git. Commit all tracked changes.
-4. Run `fervo submit --lease l_1 --key submit-1`. It pushes HEAD to your branch and returns the new node and evaluation job IDs. If the command fails after the push, retry with the same key and unchanged commit.
+3. `--checkout` returns `worktree`, a separate working tree for this lease. `cd` into it and work there with ordinary Git; never switch branches in the clone itself, because other agents may share it. Commit all tracked changes.
+4. From the worktree, run `fervo submit --lease l_1 --key submit-1`. It pushes HEAD to your branch and returns the new node and evaluation job IDs. If the command fails after the push, retry with the same key and unchanged commit.
 5. Run `fervo status n_1 --wait`. A wait lasts at most 30 seconds; repeat as needed. `rejected`, `failed`, and `verified` are valid policy outcomes, not transport errors. Read `reason` and `next_action`.
 
 If the target moved and status says `needs_rebase`, make a new claim on the current target node with `--supersedes OLD_NODE`, rebase onto its parent ref, then submit under the **new** lease. Preserve the old node ID as history. A claim or node can be abandoned with a reason. Release an unused claim so its scope stops appearing as active.
+
+When a node stops (`next_action` is `stop`), `cd` back to the clone and run `git worktree remove .fervo/worktrees/<lease>`.
 
 Working agents never review their own nodes. Human operators use `fervo review`, `merge`, `veto`, or `revert`; the runner supplies independent evaluation and review verdicts.
 

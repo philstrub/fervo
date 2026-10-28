@@ -12,10 +12,14 @@ Agents need small literal commands with stable objects and predictable retries.
 Commands validate API data and leave state decisions to the server.
 ## 4. Key Concepts
 Claims precede work; a moved target requires a new claim with supersedes; writes use idempotency keys.
+## 5. Working Trees
+`claim --checkout` gives every lease its own Git worktree at `<clone>/.fervo/worktrees/<lease>`,
+created at the claim's `parent_commit`. Several agents can then share one clone: none of them moves
+another's HEAD or index. The clone's own working tree is never switched. `.fervo/` is excluded from Git.
 */
 import { Command, Option } from 'commander';
-import { resolve } from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { randomBytes, createHash } from 'node:crypto';
 import { z } from 'zod';
 import { git } from '../git.js';
@@ -89,6 +93,7 @@ cli.command('clone').description('Clone a Fervo repo and store this actor\'s tok
     if (who.actor.kind !== 'agent' && who.actor.kind !== 'human') throw new Error(`actor kind ${who.actor.kind} cannot clone`);
     const prefix = `${who.actor.kind === 'agent' ? 'agents' : 'humans'}/${who.actor.id}`;
     git(cwd(), 'clone', '--quiet', '-c', `http.${who.git_url}.extraHeader=Authorization: ${remote.auth}`, '-c', `fervo.url=${remote.url}`, '-c', `fervo.prefix=${prefix}`, who.git_url, directory);
+    appendFileSync(resolve(directory, '.git', 'info', 'exclude'), '.fervo/\n');
     emit({ path: resolve(directory), actor: who.actor, branch_prefix: prefix });
   });
 
@@ -104,13 +109,16 @@ cli.command('claim').description('Declare intent and scope before editing')
   .requiredOption('--parent <node>').requiredOption('--scope <path>', 'repeat for each path', collect, [])
   .requiredOption('--intent <text>').requiredOption('--key <key>')
   .option('--supersedes <node>', 'prior node being rebased onto a moved target')
-  .option('--checkout', 'fetch parent and create the lease branch')
+  .option('--checkout', 'fetch the parent and create the lease branch in its own worktree')
   .action(async (options: { parent: string; scope: string[]; intent: string; key: string; supersedes?: string; checkout?: boolean }) => {
     const body = ClaimIn.parse({ parent: options.parent, scope: options.scope, intent: options.intent, ...(options.supersedes ? { supersedes: options.supersedes } : {}) });
     const out = await request(loadRemote(cwd()), 'POST', '/claims', ClaimOut, { key: options.key, body });
     if (options.checkout) {
       git(cwd(), 'fetch', '--quiet', 'origin', out.parent_ref);
-      git(cwd(), 'checkout', '--quiet', '-b', `${git(cwd(), 'config', '--get', 'fervo.prefix')}/${out.lease}`, 'FETCH_HEAD');
+      const worktree = resolve(dirname(git(cwd(), 'rev-parse', '--path-format=absolute', '--git-common-dir')), '.fervo', 'worktrees', out.lease);
+      git(cwd(), 'worktree', 'add', '--quiet', '-b', `${git(cwd(), 'config', '--get', 'fervo.prefix')}/${out.lease}`, worktree, out.parent_commit);
+      emit({ ...out, worktree });
+      return;
     }
     emit(out);
   });
