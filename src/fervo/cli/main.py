@@ -161,3 +161,9 @@ def review(
 def merge(node: Annotated[str, typer.Argument(help="The node to merge into main, e.g. n_57.")], reason: Reason, key: Key) -> None:
     """Humans: merge a node into main now, overriding the policy."""
     emit(NodeStatus.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/merge", key, ReasonIn(reason=reason))))
+
+
+@app.command()
+def veto(node: Annotated[str, typer.Argument(help="The node to stop, e.g. n_57.")], reason: Reason, key: Key) -> None:
+    """Humans: abandon a node so it is never merged, whatever its score."""
+    emit(NodeStatus.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/veto", key, ReasonIn(reason=reason))))
