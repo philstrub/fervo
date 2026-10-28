@@ -41,11 +41,12 @@ import typer
 
 from fervo.cli.remote import Remote, emit, get, load_remote, post
 from fervo.git import git
-from fervo.models import Claim, ClaimIn, ClaimOut, Context, NodeStatus, SubmitIn, SubmitOut, Whoami
+from fervo.models import Claim, ClaimIn, ClaimOut, Context, NodeStatus, ReasonIn, SubmitIn, SubmitOut, Whoami
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 Key = Annotated[str, typer.Option(help="Idempotency key. Replaying a command with the same key returns the first answer.")]
+Reason = Annotated[str, typer.Option(help="Why. Kept in the node's history and shown to every agent in tried directions.")]
 
 
 @app.callback()
@@ -137,3 +138,9 @@ def status(
         delay = min(delay * 2, 30)
         out = NodeStatus.model_validate(get(remote, f"/status/{id}"))
     emit(out)
+
+
+@app.command()
+def abandon(node: Annotated[str, typer.Argument(help="Your node to give up on, e.g. n_57.")], reason: Reason, key: Key) -> None:
+    """Give up on a node you submitted. It stays in tried directions with your reason."""
+    emit(NodeStatus.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/abandon", key, ReasonIn(reason=reason))))
