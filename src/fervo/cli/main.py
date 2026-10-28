@@ -167,3 +167,9 @@ def merge(node: Annotated[str, typer.Argument(help="The node to merge into main,
 def veto(node: Annotated[str, typer.Argument(help="The node to stop, e.g. n_57.")], reason: Reason, key: Key) -> None:
     """Humans: abandon a node so it is never merged, whatever its score."""
     emit(NodeStatus.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/veto", key, ReasonIn(reason=reason))))
+
+
+@app.command()
+def revert(node: Annotated[str, typer.Argument(help="The merged node to take back out of main, e.g. n_57.")], reason: Reason, key: Key) -> None:
+    """Humans: revert a merged node on main."""
+    emit(NodeStatus.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/revert", key, ReasonIn(reason=reason))))
