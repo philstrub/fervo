@@ -155,3 +155,9 @@ def review(
 ) -> None:
     """Humans: record a pass or fail verdict on a node and let the policy decide."""
     emit(Verdict.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/verdicts", key, ReviewIn(passed=passed, evidence=evidence))))
+
+
+@app.command()
+def merge(node: Annotated[str, typer.Argument(help="The node to merge into main, e.g. n_57.")], reason: Reason, key: Key) -> None:
+    """Humans: merge a node into main now, overriding the policy."""
+    emit(NodeStatus.model_validate(post(load_remote(Path.cwd()), f"/nodes/{node}/merge", key, ReasonIn(reason=reason))))
