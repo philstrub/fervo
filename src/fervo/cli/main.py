@@ -51,6 +51,7 @@ from fervo.models import (
     ClaimIn,
     ClaimOut,
     Context,
+    Job,
     NodeStatus,
     ReasonIn,
     ReviewIn,
@@ -218,3 +219,9 @@ def actor_list() -> None:
 def actor_disable(id: Annotated[str, typer.Argument(help="The actor to lock out, e.g. codex-1.")], key: Key) -> None:
     """Revoke an actor's token. Its nodes, claims and verdicts stay in the record."""
     emit(Actor.model_validate(post(load_remote(Path.cwd()), f"/actors/{id}/disable", key)))
+
+
+@app.command()
+def baseline(key: Key) -> None:
+    """Humans: re-measure main as the baseline. Starts a new scoring epoch."""
+    emit(Job.model_validate(post(load_remote(Path.cwd()), "/baseline", key)))
