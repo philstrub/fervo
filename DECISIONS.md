@@ -30,6 +30,10 @@ One dated line per choice that changes `dev_docs/03-fervo-engineering-plan.md`. 
 - 2026-10-28. The worktree starts at the claim's `parent_commit`, not `FETCH_HEAD`, because concurrent fetches in one clone overwrite `FETCH_HEAD`.
 - 2026-10-28. Fervo does not delete worktrees. An agent may still be inside one, and a rebase cherry-picks from the old lease branch. The skill tells agents to run `git worktree remove` when their node stops.
 
+## Review retries (branch `feat/cli-mvp-ext`)
+
+- 2026-10-28. A review job that fails to run (runner error, lease attempts exhausted) leaves the node `verified` with `reason: review unavailable: …` and `next_action: retry`; `fervo retry` clears the reason and lets `policy()` queue a new review, which now ignores failed jobs when it checks whether one exists. The alternative, moving the node to `failed` so the existing retry path applies, would re-run the whole evaluation to recover from a reviewer outage and would drop a scored node off the frontier in the meantime.
+
 ## Package, runner, and study decisions
 
 - 2026-10-27. TypeScript on Node.js 24 LTS for the package, CLI, server, runner, and tests. Migrate the existing Python CLI prototype rather than maintaining two implementations.

@@ -217,7 +217,7 @@ for (const action of ['abandon', 'merge', 'veto', 'revert'] as const) {
     });
 }
 
-cli.command('retry').description('Requeue evaluation of a failed node')
+cli.command('retry').description('Requeue the failed evaluation or review of a node')
   .argument('<node>').requiredOption('--key <key>')
   .action(async (node:string,options:{key:string})=>emit(await request(loadRemote(cwd()),'POST',`/nodes/${encodeURIComponent(node)}/retry`,NodeStatus,{key:options.key})));
 

@@ -39,7 +39,7 @@ fervo status <node> --wait                         # repeat while next_action is
 |---|---|---|
 | `wait` | Node `submitted` or `evaluating`, or `verified` + `improved` and waiting on a review, a merge or a human. Lease still `active`. | `fervo status <id> --wait` again. |
 | `rebase` | `reason: "needs_rebase"`: `main` moved past your parent. | Rebase (below). |
-| `retry` | `state: "failed"`: the evaluation broke, not your code. | `fervo retry <node> --key <k>`, then wait. |
+| `retry` | `state: "failed"`: the evaluation broke, not your code. Or `verified` with `reason: "review unavailable: …"`: the review job broke before it could judge. | `fervo retry <node> --key <k>`, then wait. |
 | `stop` | `merged`, `rejected`, `abandoned`, `reverted`, or `verified` with `within_noise` or `worse`. | Read `reason`, `outcome`, `delta`. Claim something new if useful. |
 
 Common `reason` values: `touched pinned paths: …`, `commit does not descend from parent`, test output, review evidence, `needs_rebase`.

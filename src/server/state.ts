@@ -55,7 +55,8 @@ export class State {
     const node = this.one('SELECT * FROM nodes WHERE id=?', id);
     const parent=node.parent_node?this.one('SELECT score_mean FROM nodes WHERE id=?',node.parent_node):null;
     const job = this.db.prepare('SELECT id FROM jobs WHERE node=? ORDER BY created_at DESC LIMIT 1').get(id) as Row | undefined;
-    const action = node.reason === 'needs_rebase' ? 'rebase' : node.reason&&node.state==='verified' ? 'stop' : ['submitted','evaluating'].includes(node.state) || node.state==='verified'&&node.outcome==='improved' ? 'wait' : node.state === 'failed' ? 'retry' : 'stop';
+    const review = this.db.prepare("SELECT state FROM jobs WHERE node=? AND kind='review' ORDER BY created_at DESC LIMIT 1").get(id) as Row | undefined;
+    const action = node.reason === 'needs_rebase' ? 'rebase' : node.state==='verified'&&review?.state==='failed' ? 'retry' : node.reason&&node.state==='verified' ? 'stop' : ['submitted','evaluating'].includes(node.state) || node.state==='verified'&&node.outcome==='improved' ? 'wait' : node.state === 'failed' ? 'retry' : 'stop';
     const ranked=this.db.prepare("SELECT id FROM nodes WHERE state='verified' AND outcome='improved' AND reason IS NULL ORDER BY score_mean DESC").all() as {id:string}[];
     const position=ranked.findIndex(entry=>entry.id===id);
     return { node: id, state: node.state, outcome: node.outcome, delta: node.score_mean===null||parent===null?null:node.score_mean-parent.score_mean, interval: node.score_lo === null ? null : [node.score_lo, node.score_hi], rank: position<0?null:position+1, reason: node.reason, job: job?.id ?? null, next_action: action };
@@ -154,7 +155,14 @@ export class State {
     if(disable){this.human(actor);this.db.prepare('UPDATE actors SET disabled=1 WHERE id=?').run(disable[1]);this.event(actor.id,'actor_disabled',disable[1]!);return this.actor(this.one('SELECT * FROM actors WHERE id=?',disable[1]));}
     const action=/^\/nodes\/(n_[^/]+)\/(merge|veto|revert|abandon|retry|verdicts)$/.exec(path);
     if(action){const node=this.one('SELECT * FROM nodes WHERE id=?',action[1]);const command=action[2];
-      if(command==='retry'){if(actor.id!==node.author&&actor.kind!=='human')throw new Error('only author or human may retry');if(node.state!=='failed')throw new Error('only failed nodes can retry');this.db.prepare("UPDATE nodes SET state='submitted',reason=NULL WHERE id=?").run(node.id);this.job('eval',node.id,null);this.event(actor.id,'node_retry',node.id);return this.status(node.id);}
+      if(command==='retry'){
+        if(actor.id!==node.author&&actor.kind!=='human')throw new Error('only author or human may retry');
+        const review=this.db.prepare("SELECT state FROM jobs WHERE node=? AND kind='review' ORDER BY created_at DESC LIMIT 1").get(node.id) as Row|undefined;
+        if(node.state==='failed'){this.db.prepare("UPDATE nodes SET state='submitted',reason=NULL WHERE id=?").run(node.id);this.job('eval',node.id,null);}
+        else if(node.state==='verified'&&review?.state==='failed'){this.db.prepare('UPDATE nodes SET reason=NULL WHERE id=?').run(node.id);this.policy(node.id);}
+        else throw new Error('only failed nodes or failed reviews can retry');
+        this.event(actor.id,'node_retry',node.id);return this.status(node.id);
+      }
       if(command==='verdicts'){this.human(actor);const b=ReviewIn.parse(raw);this.verdict(node.id,null,actor.id,'human',null,b.passed,null,b.evidence,'human');this.event(actor.id,'human_review',node.id,{passed:b.passed});this.policy(node.id);const verdict=this.one('SELECT * FROM verdicts WHERE node=? ORDER BY created_at DESC LIMIT 1',node.id);return {id:verdict.id,node:node.id,claim:null,reviewer:actor.id,producer:'human',provider:null,passed:b.passed,evidence:b.evidence};}
       const reason=ReasonIn.parse(raw).reason;
       if((command==='abandon'||command==='veto')&&!['submitted','evaluating','verified','failed'].includes(node.state))throw new Error(node.state==='merged'?'node is merged: revert it instead':`node is already ${node.state}`);
@@ -229,7 +237,7 @@ export class State {
       if(decision.state==='failed'){this.db.prepare("UPDATE nodes SET state='rejected',reason=? WHERE id=?").run(decision.reason,id);return;}
       if(decision.state==='hold')return;
       if(decision.state==='pending'){
-        if(decision.job&&!this.db.prepare('SELECT 1 FROM jobs WHERE node=? AND kind=?').get(id,decision.job))this.job(decision.job,id,null);
+        if(decision.job&&!this.db.prepare("SELECT 1 FROM jobs WHERE node=? AND kind=? AND state!='failed'").get(id,decision.job))this.job(decision.job,id,null);
         return;
       }
     }

@@ -68,7 +68,7 @@ Run it from the lease's worktree. Refuses uncommitted tracked changes. Pushes HE
 
 ### `retry <node> --key <k>`
 
-Requeues a `failed` node. Author or human only. Returns the node status.
+Requeues a `failed` node, or a new review for a `verified` node whose review job failed to run. Author or human only. Returns the node status.
 
 ### `abandon <node> --reason <text> --key <k>`
 
@@ -110,7 +110,7 @@ These commands read the human token from `FERVO_TOKEN`, or prompt for it on the 
 | `claim review has not passed` | claim review enabled and not yet passed | `fervo status <lease> --wait` |
 | `parent must be merged or verified` | the parent was rejected, failed or abandoned | pick a node from `context` |
 | `supersedes must name your node and current main parent` | wrong `--parent` or someone else's node | use `context.main.node` |
-| `only failed nodes can retry` | the node did not fail | read `next_action` |
+| `only failed nodes or failed reviews can retry` | neither the node nor its review job failed | read `next_action` |
 | `node is merged: revert it instead` / `node is already <state>` | `abandon` or `veto` on a merged, reverted, rejected or abandoned node | `revert` a merged node; otherwise nothing to do |
 | `human token required` | a human-only command | ask a human |
 | `human token required: run this in a terminal, or set FERVO_TOKEN for this one command` | a human command with no `FERVO_TOKEN` and no terminal | run it yourself, or use `fervo delegate` |
