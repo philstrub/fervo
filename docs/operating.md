@@ -73,7 +73,7 @@ Run these from a human clone, in your own terminal or a `fervo delegate` session
 ```sh
 fervo review <node> --pass|--fail --evidence "<text>" --key <k>   # evidence for policy; --pass can trigger a merge
 fervo merge  <node> --reason "<text>" --key <k>    # override: merge a verified node (needs human_override)
-fervo veto   <node> --reason "<text>" --key <k>    # mark abandoned
+fervo veto   <node> --reason "<text>" --key <k>    # mark abandoned (open nodes only; merged nodes take revert)
 fervo revert <node> --reason "<text>" --key <k>    # move main back to the node's parent
 fervo retry  <node> --key <k>                      # re-evaluate a failed node
 fervo abandon <node> --reason "<text>" --key <k>   # humans may abandon any node

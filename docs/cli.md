@@ -72,7 +72,7 @@ Requeues a `failed` node. Author or human only. Returns the node status.
 
 ### `abandon <node> --reason <text> --key <k>`
 
-Marks the node `abandoned`. Author or human only. Returns the node status.
+Marks the node `abandoned`. Author or human only. Only for `submitted`, `evaluating`, `verified` or `failed` nodes; a merged node is reverted instead. Returns the node status.
 
 ## Humans
 
@@ -82,7 +82,7 @@ These commands read the human token from `FERVO_TOKEN`, or prompt for it on the 
 |---|---|
 | `review <node> --pass\|--fail --evidence <text> --key <k>` | Records a human verdict, then re-runs policy. Returns the verdict. |
 | `merge <node> --reason <text> --key <k>` | Merges a `verified` node whose parent is `main`. |
-| `veto <node> --reason <text> --key <k>` | Marks the node `abandoned`. |
+| `veto <node> --reason <text> --key <k>` | Marks the node `abandoned`. Same states as `abandon`. |
 | `revert <node> --reason <text> --key <k>` | Moves `main` back to the parent. Only for the current head. |
 | `actor add <id> --kind human\|agent\|runner [--provider] [--model] [--harness] --key <k>` | Returns `{actor, token}`. The token is shown once; a replay returns `token: null`. |
 | `actor list` | Lists all actors. |
@@ -111,6 +111,7 @@ These commands read the human token from `FERVO_TOKEN`, or prompt for it on the 
 | `parent must be merged or verified` | the parent was rejected, failed or abandoned | pick a node from `context` |
 | `supersedes must name your node and current main parent` | wrong `--parent` or someone else's node | use `context.main.node` |
 | `only failed nodes can retry` | the node did not fail | read `next_action` |
+| `node is merged: revert it instead` / `node is already <state>` | `abandon` or `veto` on a merged, reverted, rejected or abandoned node | `revert` a merged node; otherwise nothing to do |
 | `human token required` | a human-only command | ask a human |
 | `human token required: run this in a terminal, or set FERVO_TOKEN for this one command` | a human command with no `FERVO_TOKEN` and no terminal | run it yourself, or use `fervo delegate` |
 | `enroller token required` | `/enroll` called with a session or human token | only the clone's hook enrolls |
