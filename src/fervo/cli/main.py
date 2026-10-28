@@ -40,7 +40,7 @@ import typer
 
 from fervo.cli.remote import Remote, emit, get, load_remote, post
 from fervo.git import git
-from fervo.models import Claim, ClaimIn, ClaimOut, Context, Whoami
+from fervo.models import Claim, ClaimIn, ClaimOut, Context, SubmitIn, SubmitOut, Whoami
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -106,3 +106,15 @@ def claim(
 def release(lease: Annotated[str, typer.Argument(help="The lease to give up, e.g. l_9.")], key: Key) -> None:
     """Give up a claim you will not submit, so its scope stops showing as taken."""
     emit(Claim.model_validate(post(load_remote(Path.cwd()), f"/claims/{lease}/release", key)))
+
+
+@app.command()
+def submit(lease: Annotated[str, typer.Option(help="The lease this work was claimed under.")], key: Key) -> None:
+    """Push HEAD to your lease branch and submit it as a node for independent evaluation."""
+    cwd = Path.cwd()
+    if git(cwd, "status", "--porcelain", "--untracked-files=no"):
+        typer.echo("uncommitted changes to tracked files: commit them or stash them, then submit", err=True)
+        raise typer.Exit(1)
+    commit = git(cwd, "rev-parse", "HEAD")
+    git(cwd, "push", "--quiet", "origin", f"HEAD:refs/heads/{git(cwd, 'config', '--get', 'fervo.prefix')}/{lease}")
+    emit(SubmitOut.model_validate(post(load_remote(cwd), "/submit", key, SubmitIn(lease=lease, commit=commit))))
