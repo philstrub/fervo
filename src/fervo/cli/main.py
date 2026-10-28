@@ -38,10 +38,12 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from pydantic import TypeAdapter
 
 from fervo.cli.remote import Remote, emit, get, load_remote, post
 from fervo.git import git
 from fervo.models import (
+    Actor,
     ActorCreated,
     ActorIn,
     ActorKind,
@@ -204,3 +206,9 @@ def actor_add(
     """Create an actor and print its token. The token is shown only this once."""
     body = ActorIn(id=id, kind=kind, provider=provider, model=model, harness=harness)
     emit(ActorCreated.model_validate(post(load_remote(Path.cwd()), "/actors", key, body)))
+
+
+@actor_app.command("list")
+def actor_list() -> None:
+    """Every actor with its kind, provider, model, harness and whether it is disabled."""
+    emit(TypeAdapter(list[Actor]).validate_python(get(load_remote(Path.cwd()), "/actors")))
