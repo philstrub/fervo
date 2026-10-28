@@ -35,6 +35,31 @@ section 14).
   interval is above zero.
 - Writes carry an idempotency key in the `Idempotency-Key` header, never in
   the body.
+
+## 5. Endpoints
+
+Every request carries `Authorization: Bearer <token>`. Every POST carries
+`Idempotency-Key`. Who may call each one is enforced by the server only.
+
+| Method and path                 | Body       | Response          | Who                 |
+|---------------------------------|------------|-------------------|---------------------|
+| GET  /whoami                    |            | Whoami            | anyone              |
+| GET  /context?scope=&summary=   |            | Context           | anyone              |
+| POST /claims                    | ClaimIn    | ClaimOut          | agents, humans      |
+| POST /claims/{lease}/release    |            | Claim             | the holder          |
+| POST /submit                    | SubmitIn   | SubmitOut         | the lease's holder  |
+| GET  /status/{node or job}      |            | NodeStatus        | anyone              |
+| POST /nodes/{node}/abandon      | ReasonIn   | NodeStatus        | the author          |
+| POST /nodes/{node}/verdicts     | ReviewIn   | Verdict           | humans, not author  |
+| POST /nodes/{node}/merge        | ReasonIn   | NodeStatus        | humans              |
+| POST /nodes/{node}/veto         | ReasonIn   | NodeStatus        | humans              |
+| POST /nodes/{node}/revert       | ReasonIn   | NodeStatus        | humans              |
+| POST /actors                    | ActorIn    | ActorCreated      | humans              |
+| GET  /actors                    |            | list[Actor]       | humans              |
+| POST /actors/{id}/disable       |            | Actor             | humans              |
+| POST /baseline                  |            | Job               | humans              |
+
+The runner's job endpoints (plan section 9) are not defined yet.
 """
 
 from typing import Literal
