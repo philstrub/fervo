@@ -12,7 +12,7 @@ The runner invokes this adapter only after deterministic checks pass.
 ## 4. Key Concepts
 Judge provider differs from the author's provider; diffs are untrusted input. Both providers are asked
 for JSON that matches the decision schema, so a reply in prose or with a raw newline inside a string cannot
-fail the job.
+fail the job. The Anthropic budget covers the model's thinking as well as the answer; 800 tokens was cut mid-string.
 */
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
@@ -26,7 +26,7 @@ export const callModel: ModelCall = async (provider, model, prompt) => {
   let output: string;
   if (provider === 'anthropic') {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({ model, max_tokens: 800, output_config: { format: { type: 'json_schema', schema } }, messages: [{ role: 'user', content: prompt }] });
+    const response = await client.messages.create({ model, max_tokens: 8192, output_config: { format: { type: 'json_schema', schema } }, messages: [{ role: 'user', content: prompt }] });
     output = response.content.filter(block => block.type === 'text').map(block => block.text).join('');
   } else if (provider === 'openai') {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
