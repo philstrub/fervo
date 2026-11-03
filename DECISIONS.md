@@ -38,6 +38,7 @@ One dated line per choice that changes `dev_docs/03-fervo-engineering-plan.md`. 
 - 2026-10-28. A submit rejected on the server (pinned path, non-descendant commit) returns `job: null`. It used to queue a review job and mark it done unrun, which left a phantom job in the log.
 
 - 2026-10-28. A review job that fails to run (runner error, lease attempts exhausted) leaves the node `verified` with `next_action: retry` and a `reason` of `review unavailable: <error>` or `review lease attempts exhausted`; `fervo retry` clears the reason and lets `policy()` queue a new review, which now ignores failed jobs when it checks whether one exists. The alternative, moving the node to `failed` so the existing retry path applies, would re-run the whole evaluation to recover from a reviewer outage and would drop a scored node off the frontier in the meantime.
+- 2026-11-03. The runner survives a lost connection instead of exiting. A lease allows 50 s client-side for its 30 s server wait (the 35 s default aborted it across the VM tunnel), transport errors and 5xx are retried with backoff up to 30 s, and a retry reuses the request's idempotency key so a lease or result the server already applied replays its stored response instead of leasing the job twice. A failed heartbeat is logged, not rethrown; a result still refused after five attempts is logged and the job is left to its lease timeout. An HTTP 4xx is not retried.
 
 ## Package, runner, and study decisions
 

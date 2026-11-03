@@ -30,14 +30,14 @@ export function cloneRemote(cwd: string): Remote {
   return { url: git(cwd, 'config', '--get', 'fervo.url'), auth: header.slice('Authorization: '.length) };
 }
 
-export async function request<T extends z.ZodType>(remote: Remote, method: 'GET' | 'POST', path: string, schema: T, options: { key?: string; body?: unknown; params?: URLSearchParams } = {}): Promise<z.output<T>> {
+export async function request<T extends z.ZodType>(remote: Remote, method: 'GET' | 'POST', path: string, schema: T, options: { key?: string; body?: unknown; params?: URLSearchParams; timeoutMs?: number } = {}): Promise<z.output<T>> {
   const url = new URL(path, remote.url);
   if (options.params) url.search = options.params.toString();
   const response = await fetch(url, {
     method,
     headers: { Authorization: remote.auth, ...(options.key === undefined ? {} : { 'Idempotency-Key': options.key }), ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    signal: AbortSignal.timeout(35_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 35_000),
   });
   const body = await response.text();
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${body}`);

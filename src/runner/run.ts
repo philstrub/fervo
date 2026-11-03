@@ -73,11 +73,36 @@ export async function executeJob(job: typeof LeaseJob._output, mirror:string, se
   } finally {git(mirror,'worktree','remove','--force',nodeDir);if(job.parent_commit)git(mirror,'worktree','remove','--force',parentDir);}
 }
 
+const log=(message:string)=>process.stderr.write(`${new Date().toISOString()} ${message}\n`);
+const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+// An HTTP 4xx is the server refusing the request; anything else (abort, reset, 5xx) may succeed on a retry.
+const transient=(error:unknown)=>!(error instanceof Error&&/^HTTP 4\d\d:/.test(error.message));
+const message=(error:unknown)=>error instanceof Error?error.message:String(error);
+
+// Retries with the same idempotency key, so a request the server applied but whose response was lost replays its stored response.
+async function retrying<T>(what:string,attempts:number,call:()=>Promise<T>):Promise<T> {
+  for(let attempt=1,delay=1000;;attempt++,delay=Math.min(delay*2,30_000)) {
+    try {return await call();}
+    catch(error){if(!transient(error)||attempt>=attempts)throw error;log(`${what} error: ${message(error)}; retry in ${delay/1000}s`);await sleep(delay);}
+  }
+}
+
 export async function runRunner(url:string,token:string,settings:Settings,model:ModelCall=callModel,once=false):Promise<void> {
   const remote:Remote={url,auth:`Bearer ${token}`};const who=await request(remote,'GET','/whoami',Whoami);if(who.actor.kind!=='runner')throw new Error('runner token required');
   const root=mkdtempSync(join(tmpdir(),'fervo-runner-'));const mirror=join(root,'repo.git');
   git(root,'clone','--mirror','--quiet','-c',`http.${who.git_url}.extraHeader=Authorization: Bearer ${token}`,who.git_url,mirror);
-  try {do {const job=await request(remote,'POST','/jobs/lease',LeaseJob.nullable(),{key:randomUUID(),body:{wait:once?0:30}});if(!job){if(once)return;continue;}let heartbeatError:unknown;const heartbeat=setInterval(()=>{void request(remote,'POST',`/jobs/${job.id}/heartbeat`,Job,{key:randomUUID(),body:{}}).catch(error=>{heartbeatError=error;});},30_000);let result:typeof JobResult._output;try{result=await executeJob(job,mirror,settings,model);}catch(error){result={verdicts:[],error:error instanceof Error?error.message:String(error)};}finally{clearInterval(heartbeat);}if(heartbeatError)throw heartbeatError;await request(remote,'POST',`/jobs/${job.id}/result`,Job,{key:randomUUID(),body:result});}while(!once);}finally{rmSync(root,{recursive:true,force:true});}
+  try {do {
+    // The lease waits up to 30 s on the server, so the client allows 50 s before aborting.
+    const leaseKey=randomUUID();
+    const job=await retrying('lease',once?5:Infinity,()=>request(remote,'POST','/jobs/lease',LeaseJob.nullable(),{key:leaseKey,body:{wait:once?0:30},timeoutMs:50_000}));
+    if(!job){if(once)return;continue;}
+    const heartbeat=setInterval(()=>{void request(remote,'POST',`/jobs/${job.id}/heartbeat`,Job,{key:randomUUID(),body:{}}).catch(error=>log(`heartbeat ${job.id} error: ${message(error)}`));},30_000);
+    let result:typeof JobResult._output;
+    try{result=await executeJob(job,mirror,settings,model);}catch(error){result={verdicts:[],error:message(error)};}finally{clearInterval(heartbeat);}
+    const resultKey=randomUUID();
+    try{await retrying(`result ${job.id}`,5,()=>request(remote,'POST',`/jobs/${job.id}/result`,Job,{key:resultKey,body:result}));}
+    catch(error){if(once)throw error;log(`result ${job.id} dropped: ${message(error)}`);}
+  } while(!once);} finally{rmSync(root,{recursive:true,force:true});}
 }
 
 export function readSettings(paths:{judgeTemplate:string;reviewTemplate:string;anthropicModel:string;openaiModel:string;reviewProvider:string;reviewModel:string}):Settings{return {...paths,judgeTemplate:readFileSync(paths.judgeTemplate,'utf8'),reviewTemplate:readFileSync(paths.reviewTemplate,'utf8')};}
