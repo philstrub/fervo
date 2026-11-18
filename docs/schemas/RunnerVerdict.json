@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunnerVerdict",
+  "type": "object",
+  "properties": {
+    "producer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "passed": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "samples": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "noise": {
+      "type": "number",
+      "minimum": 0
+    },
+    "evidence": {
+      "type": "string"
+    },
+    "recipe_hash": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "producer",
+    "provider",
+    "passed",
+    "samples",
+    "evidence",
+    "recipe_hash"
+  ]
+}

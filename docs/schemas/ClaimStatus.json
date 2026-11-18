@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClaimStatus",
+  "type": "object",
+  "properties": {
+    "lease": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "active",
+        "submitted",
+        "expired",
+        "released"
+      ]
+    },
+    "expires_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_job": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "review": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "pending",
+            "passed",
+            "failed"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "next_action": {
+      "type": "string",
+      "enum": [
+        "wait",
+        "rebase",
+        "retry",
+        "release",
+        "stop"
+      ]
+    }
+  },
+  "required": [
+    "lease",
+    "state",
+    "expires_at",
+    "review_job",
+    "review",
+    "reason",
+    "next_action"
+  ]
+}

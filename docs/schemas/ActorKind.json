@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActorKind",
+  "type": "string",
+  "enum": [
+    "human",
+    "agent",
+    "runner",
+    "enroller",
+    "system"
+  ]
+}

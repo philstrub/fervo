@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TriedEntry",
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "evaluating",
+        "verified",
+        "merged",
+        "reverted",
+        "rejected",
+        "failed",
+        "abandoned"
+      ]
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "improved",
+            "within_noise",
+            "worse"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "at": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "node",
+    "intent",
+    "outcome"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Metric",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "max",
+        "min"
+      ]
+    },
+    "weight": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "name",
+    "direction",
+    "weight"
+  ]
+}

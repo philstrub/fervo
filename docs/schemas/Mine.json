@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mine",
+  "type": "object",
+  "properties": {
+    "leases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lease": {
+            "type": "string",
+            "minLength": 1
+          },
+          "by": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "intent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "since": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "lease",
+          "by",
+          "scope",
+          "intent",
+          "since"
+        ]
+      }
+    },
+    "updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "event": {
+            "type": "string",
+            "minLength": 1
+          },
+          "at": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "subject",
+          "event",
+          "at"
+        ]
+      }
+    }
+  },
+  "required": [
+    "leases",
+    "updates"
+  ]
+}

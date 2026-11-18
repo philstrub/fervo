@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SubmitIn",
+  "type": "object",
+  "properties": {
+    "lease": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "lease",
+    "commit"
+  ]
+}

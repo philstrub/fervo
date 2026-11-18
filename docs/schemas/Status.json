@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Status",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "submitted",
+            "evaluating",
+            "verified",
+            "merged",
+            "reverted",
+            "rejected",
+            "failed",
+            "abandoned"
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "improved",
+                "within_noise",
+                "worse"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delta": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "interval": {
+          "anyOf": [
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rank": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_action": {
+          "type": "string",
+          "enum": [
+            "wait",
+            "rebase",
+            "retry",
+            "release",
+            "stop"
+          ]
+        }
+      },
+      "required": [
+        "node",
+        "state",
+        "outcome",
+        "delta",
+        "interval",
+        "rank",
+        "reason",
+        "job",
+        "next_action"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "lease": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "active",
+            "submitted",
+            "expired",
+            "released"
+          ]
+        },
+        "expires_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_job": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "review": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "pending",
+                "passed",
+                "failed"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "next_action": {
+          "type": "string",
+          "enum": [
+            "wait",
+            "rebase",
+            "retry",
+            "release",
+            "stop"
+          ]
+        }
+      },
+      "required": [
+        "lease",
+        "state",
+        "expires_at",
+        "review_job",
+        "review",
+        "reason",
+        "next_action"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "claim_review",
+            "eval",
+            "review",
+            "summary",
+            "postmerge",
+            "baseline"
+          ]
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claim": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "done",
+            "failed"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "node",
+        "state"
+      ]
+    }
+  ]
+}

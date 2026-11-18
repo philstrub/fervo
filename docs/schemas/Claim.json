@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Claim",
+  "type": "object",
+  "properties": {
+    "lease": {
+      "type": "string",
+      "minLength": 1
+    },
+    "holder": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "active",
+        "submitted",
+        "expired",
+        "released"
+      ]
+    },
+    "expires_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "lease",
+    "holder",
+    "parent",
+    "intent",
+    "scope",
+    "state",
+    "expires_at"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NodeState",
+  "type": "string",
+  "enum": [
+    "submitted",
+    "evaluating",
+    "verified",
+    "merged",
+    "reverted",
+    "rejected",
+    "failed",
+    "abandoned"
+  ]
+}

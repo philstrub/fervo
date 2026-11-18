@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NodeStatus",
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "evaluating",
+        "verified",
+        "merged",
+        "reverted",
+        "rejected",
+        "failed",
+        "abandoned"
+      ]
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "improved",
+            "within_noise",
+            "worse"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "delta": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "interval": {
+      "anyOf": [
+        {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rank": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "job": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "next_action": {
+      "type": "string",
+      "enum": [
+        "wait",
+        "rebase",
+        "retry",
+        "release",
+        "stop"
+      ]
+    }
+  },
+  "required": [
+    "node",
+    "state",
+    "outcome",
+    "delta",
+    "interval",
+    "rank",
+    "reason",
+    "job",
+    "next_action"
+  ]
+}
